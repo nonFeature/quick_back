@@ -1,0 +1,7 @@
+__id__ = "quick_back"
+__name__ = "Quick Back"
+__description__ = "Быстрый возврат на главный экран или в корень раздела по удержанию предиктивного жеста назад"
+__icon__ = "feature_plugins/9"
+__version__ = "1.0"
+__min_version__ = "12.5.1"
+__author__ = "@nonPlugins"
