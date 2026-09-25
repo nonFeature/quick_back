@@ -1,7 +1,7 @@
 __id__ = "quick_back"
 __name__ = "Quick Back"
 __description__ = "Через некоторое насилие над предиктивным жестом происходит магия... А какая я не скажу"
-__icon__ = "nonPlugins/0"
+__icon__ = "nonPlugins/2"
 __version__ = "0.1"
 __min_version__ = "12.5.1"
 __author__ = "@nonPlugins"
