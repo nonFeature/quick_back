@@ -22,7 +22,7 @@ INTERNAL_MODULES = ("ui", "i18n", "utils", "features", "header")
 SDK_UI_MODULES = {"ui.settings", "ui.bulletin"}
 SDK_UI_SETTINGS_NAMES = {"Divider", "Header", "Input", "Selector", "Switch", "Text"}
 
-COPYRIGHT_STRING = "# Quick Back\n# Plugin by @nonPlugins"
+COPYRIGHT_STRING = "# Quick Back\n# Plugin by @nonPlugins\n# https://github.com/nonFeature/quick_back"
 
 HEADER_WATERMARK = """
 #          @@@@@@@@@@
