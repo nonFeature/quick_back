@@ -14,10 +14,10 @@ SRC_DIR = SCRIPT_DIR
 HEADER_FILE = SRC_DIR / "header.py"
 
 PRIORITY_FILES = ["header.py"]
-PRIORITY_DIRS = ["data", "i18n", "utils", "features", "ui"]
+PRIORITY_DIRS = ["ui", "i18n", "utils", "features"]
 LAST_FILES = ["main.py"]
 
-INTERNAL_MODULES = ("data", "i18n", "utils", "features", "ui", "header")
+INTERNAL_MODULES = ("ui", "i18n", "utils", "features", "header")
 
 SDK_UI_MODULES = {"ui.settings", "ui.bulletin"}
 SDK_UI_SETTINGS_NAMES = {"Divider", "Header", "Input", "Selector", "Switch", "Text"}

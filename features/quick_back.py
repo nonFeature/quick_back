@@ -3,13 +3,11 @@ import time
 from base_plugin import MethodHook
 from hook_utils import find_class, get_private_field, set_private_field
 
-from data.constants import (
+from ui.settings import (
     CONF_HOLD_THRESHOLD,
     CONF_TARGET_MODE,
     CONF_VIBRATION,
-    DEFAULT_HOLD_THRESHOLD_MS,
-    DEFAULT_TARGET_MODE,
-    TARGET_MODE_SECTION,
+    THRESHOLD_CHOICES,
 )
 from utils.fragment import post_ui
 from utils.helpers import quick_back_core
@@ -42,16 +40,16 @@ def _qb_waveform(*values):
     return jlong[values]
 
 
-def _qb_vibration_enabled(plugin):
-    try:
-        return bool(plugin.get_setting(CONF_VIBRATION, True))
-    except Exception:
-        return True
+def play_vibration(plugin, mode=None):
+    if mode is None:
+        try:
+            mode = int(plugin.get_setting(CONF_VIBRATION, 2) or 2)
+        except Exception:
+            mode = 2
 
-
-def _qb_vibrate(plugin):
-    if not _qb_vibration_enabled(plugin):
+    if mode == 0:
         return
+
     try:
         from android.os import Build
 
@@ -59,15 +57,23 @@ def _qb_vibrate(plugin):
         if VibratorUtils:
             from android.os import VibrationEffect
 
-            if int(Build.VERSION.SDK_INT) >= 29:
-                effect = VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK))
-                VibratorUtils.vibrateEffect(effect)
-            else:
-                VibratorUtils.vibrate(40)
-            _qb_log(plugin, "gesture threshold reached, vibration played")
+            if mode == 1:
+                if int(Build.VERSION.SDK_INT) >= 29:
+                    VibratorUtils.vibrateEffect(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK)))
+                else:
+                    VibratorUtils.vibrate(20)
+            elif mode == 2:
+                if int(Build.VERSION.SDK_INT) >= 29:
+                    VibratorUtils.vibrateEffect(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK)))
+                else:
+                    VibratorUtils.vibrate(40)
+            elif mode == 3:
+                VibratorUtils.vibrate(80)
+            _qb_log(plugin, f"vibration played (mode {mode})")
             return
     except Exception as e:
         _qb_log(plugin, f"extera vibration error: {e}")
+
     try:
         from android.os import Build, VibrationEffect
         from org.telegram.messenger import ApplicationLoader
@@ -76,19 +82,26 @@ def _qb_vibrate(plugin):
         vibrator = context.getSystemService("vibrator")
         if vibrator is None:
             return
-        if int(Build.VERSION.SDK_INT) >= 26:
-            vibrator.vibrate(VibrationEffect.createWaveform(_qb_waveform(0, 35, 70, 35), -1))
-        else:
-            vibrator.vibrate(40)
+
+        if mode == 1:
+            if int(Build.VERSION.SDK_INT) >= 29:
+                vibrator.vibrate(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK)))
+            else:
+                vibrator.vibrate(20)
+        elif mode == 2:
+            if int(Build.VERSION.SDK_INT) >= 29:
+                vibrator.vibrate(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK)))
+            else:
+                vibrator.vibrate(40)
+        elif mode == 3:
+            vibrator.vibrate(80)
     except Exception as e:
         _qb_log(plugin, f"vibration error: {e}")
 
 
 def _qb_threshold_sec(plugin):
     try:
-        from data.constants import DEFAULT_HOLD_THRESHOLD_INDEX, THRESHOLD_CHOICES
-
-        raw = int(plugin.get_setting(CONF_HOLD_THRESHOLD, DEFAULT_HOLD_THRESHOLD_INDEX) or DEFAULT_HOLD_THRESHOLD_INDEX)
+        raw = int(plugin.get_setting(CONF_HOLD_THRESHOLD, 1) or 1)
         if 0 <= raw < len(THRESHOLD_CHOICES):
             ms = THRESHOLD_CHOICES[raw]
         else:
@@ -96,7 +109,7 @@ def _qb_threshold_sec(plugin):
         return max(0.15, ms / 1000.0)
     except Exception as e:
         _qb_log(plugin, f"threshold setting read failed: {e}")
-        return DEFAULT_HOLD_THRESHOLD_MS / 1000.0
+        return 0.6
 
 
 def _is_archive(candidate):
@@ -211,12 +224,12 @@ def _qb_hold_target(plugin, layout):
         if _is_archive(top):
             return None
 
-        mode = int(plugin.get_setting(CONF_TARGET_MODE, DEFAULT_TARGET_MODE) or DEFAULT_TARGET_MODE)
+        mode = int(plugin.get_setting(CONF_TARGET_MODE, 0) or 0)
 
         target_index = -1
         target_fragment = None
 
-        if mode == TARGET_MODE_SECTION:
+        if mode == 1:
             # Section root mode:
             # If the screen right after main list is archive (e.g. Main -> Archive -> Chat -> Profile)
             if size > 2 and _is_archive(stack.get(1)):
@@ -418,7 +431,7 @@ class _QbThresholdRunnable:
             if _QB_BACK_START_TS != self.ts or _QB_VIBRATED:
                 return
             _QB_VIBRATED = True
-            _qb_vibrate(self.plugin)
+            play_vibration(self.plugin)
             _qb_swap_background(self.plugin, self.layout, self.ts)
         except Exception as e:
             _qb_log(self.plugin, f"threshold runnable error: {e}")
