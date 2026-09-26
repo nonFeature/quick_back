@@ -62,11 +62,11 @@ def qb_animate_target_view(plugin, view):
             anim.start()
 
         elif mode == 2:
-            # 2. Depth Zoom
+            # 2. Depth Zoom (smooth deep entrance, no bounce)
             view.setAlpha(0.0)
-            view.setScaleX(0.88)
-            view.setScaleY(0.88)
-            anim = view.animate().alpha(1.0).scaleX(1.0).scaleY(1.0).setDuration(220)
+            view.setScaleX(0.76)
+            view.setScaleY(0.76)
+            anim = view.animate().alpha(1.0).scaleX(1.0).scaleY(1.0).setDuration(240)
             if decelerate is not None:
                 anim.setInterpolator(decelerate)
             anim.start()
@@ -87,18 +87,18 @@ def qb_animate_target_view(plugin, view):
             anim.start()
 
         elif mode == 4:
-            # 4. Elastic Pop
+            # 4. Elastic Pop (punchy spring overshoot and bounce)
             view.setAlpha(0.0)
-            view.setScaleX(0.85)
-            view.setScaleY(0.85)
-            anim = view.animate().alpha(1.0).scaleX(1.0).scaleY(1.0).setDuration(260)
+            view.setScaleX(0.80)
+            view.setScaleY(0.80)
+            anim = view.animate().alpha(1.0).scaleX(1.0).scaleY(1.0).setDuration(330)
 
             overshoot = None
             if OvershootInterpolator is not None:
                 try:
                     from java import jfloat
 
-                    overshoot = OvershootInterpolator(jfloat(1.5))
+                    overshoot = OvershootInterpolator(jfloat(3.5))
                 except Exception:
                     try:
                         overshoot = OvershootInterpolator()
