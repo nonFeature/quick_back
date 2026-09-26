@@ -1,4 +1,4 @@
-from hook_utils import find_class, set_private_field
+from hook_utils import find_class, get_private_field, set_private_field
 from ui.settings import CONF_TARGET_MODE
 
 _QB_FIELDS = {}
@@ -59,20 +59,16 @@ def _is_class(obj, *class_names):
     if obj is None:
         return False
     try:
-        name = obj.getClass().getName()
-        simple = obj.getClass().getSimpleName()
-        for c in class_names:
-            if c in (name, simple):
-                return True
+        cls = obj.getClass()
+        while cls is not None:
+            name = cls.getName()
+            simple = cls.getSimpleName()
+            for c in class_names:
+                if c == name or c == simple:
+                    return True
+            cls = cls.getSuperclass()
     except Exception:
         pass
-    for c in class_names:
-        try:
-            cls = find_class(c) if "." in c else None
-            if cls is not None and isinstance(obj, cls):
-                return True
-        except Exception:
-            pass
     return False
 
 
@@ -224,37 +220,131 @@ def qb_cache_prepare_moving(plugin=None):
         ActionBarLayout = find_class("org.telegram.ui.ActionBar.ActionBarLayout")
         if not ActionBarLayout:
             return False
-        method = ActionBarLayout.getClass().getDeclaredMethod("prepareForMoving")
-        method.setAccessible(True)
-        _QB_PREPARE_MOVING = method
-        return True
-    except Exception:
-        return False
+        cls = ActionBarLayout
+        while cls is not None:
+            for m in cls.getDeclaredMethods():
+                if m.getName() == "prepareForMoving":
+                    m.setAccessible(True)
+                    _QB_PREPARE_MOVING = m
+                    return True
+            cls = cls.getSuperclass()
+    except Exception as e:
+        if plugin is not None:
+            try:
+                plugin.log(f"[Quick Back] cache prepareForMoving failed: {e}")
+            except Exception:
+                pass
+    return False
+
+
+def _manual_prepare_moving(layout):
+    try:
+        stack = layout.getFragmentStack()
+        if stack is None:
+            return False
+        size = int(stack.size())
+        if size < 2:
+            return False
+        fragment = stack.get(size - 2)
+        if fragment is None:
+            return False
+
+        if hasattr(fragment, "prepareFragmentToSlide"):
+            try:
+                fragment.prepareFragmentToSlide(True, False)
+            except Exception:
+                pass
+
+        view = getattr(fragment, "fragmentView", None)
+        if view is None:
+            try:
+                act = getattr(layout, "parentActivity", None)
+                if act is None:
+                    act = get_private_field(layout, "parentActivity")
+                if act is not None:
+                    view = fragment.createView(act)
+            except Exception as e:
+                print(f"[Quick Back] manual createView error: {e}")
+
+        if view is not None:
+            parent = view.getParent()
+            if parent is not None:
+                if hasattr(fragment, "onRemoveFromParent"):
+                    try:
+                        fragment.onRemoveFromParent()
+                    except Exception:
+                        pass
+                parent.removeView(view)
+
+            back = get_private_field(layout, "containerViewBack")
+            if back is not None:
+                back_parent = back.getParent()
+                if back_parent is None:
+                    layout.addView(back, 0)
+                back.addView(view)
+                back.setVisibility(0)
+                return True
+    except Exception as e:
+        print(f"[Quick Back] manual prepare moving error: {e}")
+    return False
 
 
 def qb_prepare_moving(layout):
+    if _QB_PREPARE_MOVING is not None:
+        try:
+            param_count = len(_QB_PREPARE_MOVING.getParameterTypes())
+            if param_count == 0:
+                _QB_PREPARE_MOVING.invoke(layout)
+            elif param_count == 1:
+                _QB_PREPARE_MOVING.invoke(layout, True)
+            return True
+        except Exception as e:
+            print(f"[Quick Back] cached prepareForMoving invoke error: {e}")
+
+    if hasattr(layout, "prepareForMoving"):
+        try:
+            layout.prepareForMoving()
+            return True
+        except Exception as e:
+            print(f"[Quick Back] direct layout.prepareForMoving() error: {e}")
+
     try:
-        if _QB_PREPARE_MOVING is None:
-            return False
-        _QB_PREPARE_MOVING.invoke(layout)
-        return True
-    except Exception:
-        return False
+        cls = layout.getClass()
+        while cls is not None:
+            for m in cls.getDeclaredMethods():
+                if m.getName() == "prepareForMoving":
+                    m.setAccessible(True)
+                    param_count = len(m.getParameterTypes())
+                    if param_count == 0:
+                        m.invoke(layout)
+                    elif param_count == 1:
+                        m.invoke(layout, True)
+                    return True
+            cls = cls.getSuperclass()
+    except Exception as e:
+        print(f"[Quick Back] dynamic prepareForMoving search error: {e}")
+
+    return _manual_prepare_moving(layout)
 
 
 def qb_transition_background(layout):
-    try:
-        Helper = find_class("com.exteragram.messenger.utils.ui.PredictiveBackAnimationHelper")
-        if not Helper:
-            return False
-        background = Helper.getTransitionBackground(layout.getFragmentStack(), layout.getLastFragment())
-        if background is None:
-            return False
-        set_private_field(layout, "predictiveBackBackgroundDrawable", background)
+    for helper_name in (
+        "com.exteragram.messenger.utils.ui.PredictiveBackAnimationHelper",
+        "org.telegram.ui.ActionBar.PredictiveBackAnimationHelper",
+        "org.telegram.ui.PredictiveBackAnimationHelper",
+    ):
         try:
-            set_private_field(layout, "springRouteBackgroundDrawable", background)
+            Helper = find_class(helper_name)
+            if not Helper:
+                continue
+            background = Helper.getTransitionBackground(layout.getFragmentStack(), layout.getLastFragment())
+            if background is not None:
+                set_private_field(layout, "predictiveBackBackgroundDrawable", background)
+                try:
+                    set_private_field(layout, "springRouteBackgroundDrawable", background)
+                except Exception:
+                    pass
+                return True
         except Exception:
-            pass
-        return True
-    except Exception:
-        return False
+            continue
+    return False

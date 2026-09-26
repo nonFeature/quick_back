@@ -16,7 +16,7 @@ if not SRC_DIR.exists():
 HEADER_FILE = SRC_DIR / "header.py"
 
 PRIORITY_FILES = ["header.py"]
-PRIORITY_DIRS = ["ui", "i18n", "utils", "features"]
+PRIORITY_DIRS = ["data", "i18n", "utils", "features", "ui"]
 LAST_FILES = ["main.py"]
 
 INTERNAL_MODULES = ("ui", "i18n", "utils", "features", "header", "quick_back")

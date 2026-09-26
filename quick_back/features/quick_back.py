@@ -22,7 +22,12 @@ from ui.settings import (
     THRESHOLD_CHOICES,
 )
 from utils.fragment import post_ui
-from utils.helpers import quick_back_core
+from utils.helpers import (
+    get_android_sdk,
+    get_client_version,
+    is_predictive_back_supported,
+    quick_back_core,
+)
 
 _QB_HOOK_REFS = []
 _QB_INSTALLED = False
@@ -440,8 +445,9 @@ class _QbOnSlideAnimationEndHook(MethodHook):
 
 def _qb_diagnose_env(plugin):
     try:
-        Build = find_class("android.os.Build$VERSION")
-        sdk = int(getattr(Build, "SDK_INT", 0)) if Build else 0
+        sdk = get_android_sdk()
+        ver = get_client_version()
+        pred_supported = is_predictive_back_supported()
 
         extera_info = "unknown"
         ExteraConfig = find_class("com.exteragram.messenger.ExteraConfig")
@@ -460,12 +466,21 @@ def _qb_diagnose_env(plugin):
                 except Exception:
                     pass
 
-        _qb_log(plugin, f"env: Android SDK {sdk}, extera={extera_info}")
-        if sdk < 34:
-            _qb_log(
-                plugin,
-                f"info: Android SDK is {sdk} < 34 (predictive back unavailable), in-app swipe back is supported.",
-            )
+        _qb_log(
+            plugin,
+            f"env: Android SDK {sdk}, Telegram {ver}, predictive_supported={pred_supported}, extera={extera_info}",
+        )
+        if not pred_supported:
+            if sdk < 34:
+                _qb_log(
+                    plugin,
+                    f"info: Android SDK is {sdk} < 34 (requires Android 14+). Predictive back is disabled, using in-app swipe back.",
+                )
+            else:
+                _qb_log(
+                    plugin,
+                    f"info: Telegram version {ver} does not support predictive back. Using in-app swipe back.",
+                )
         elif "predictiveBackAnimation=False" in extera_info or "predictiveBackIntensity=0" in extera_info:
             _qb_log(
                 plugin,
@@ -485,13 +500,22 @@ def install_quick_back(plugin):
             _qb_log(plugin, "ActionBarLayout not found, quick back disabled")
             return
 
-        for name, hook_cls in (
-            ("onBackStarted", _QbOnBackStartedHook),
-            ("onBackCancelled", _QbOnBackCancelledHook),
-            ("onBackInvoked", _QbOnBackInvokedHook),
+        hooks = [
             ("onTouchEvent", _QbOnTouchEventHook),
             ("onSlideAnimationEnd", _QbOnSlideAnimationEndHook),
-        ):
+        ]
+        if is_predictive_back_supported():
+            hooks.extend(
+                [
+                    ("onBackStarted", _QbOnBackStartedHook),
+                    ("onBackCancelled", _QbOnBackCancelledHook),
+                    ("onBackInvoked", _QbOnBackInvokedHook),
+                ]
+            )
+        else:
+            _qb_log(plugin, "predictive back unsupported on this environment, hooking swipe gestures only")
+
+        for name, hook_cls in hooks:
             for m in ActionBarLayout.getClass().getDeclaredMethods():
                 try:
                     if m.getName() != name:
