@@ -6,6 +6,7 @@ from hook_utils import find_class, get_private_field
 from features.animation import qb_animate_target_view, qb_reset_animated_view
 from features.stack import (
     qb_apply_order,
+    qb_bool_field,
     qb_cache_prepare_moving,
     qb_gesture_active,
     qb_hold_target,
@@ -140,7 +141,10 @@ class _QbThresholdRunnable:
     def run(self):
         global _QB_VIBRATED
         try:
-            if _QB_BACK_START_TS != self.ts or _QB_VIBRATED:
+            if _QB_BACK_START_TS != self.ts:
+                _qb_log(self.plugin, f"threshold cancelled: start_ts changed ({_QB_BACK_START_TS!r} vs {self.ts!r})")
+                return
+            if _QB_VIBRATED:
                 return
             _QB_VIBRATED = True
             play_vibration(self.plugin)
@@ -161,16 +165,41 @@ class _QbOnBackStartedHook(MethodHook):
         global _QB_BACK_START_TS, _QB_VIBRATED, _QB_THRESHOLD_RUNNABLE
         try:
             _QB_BACK_START_TS = None
-            if not param.getResult():
-                return
             layout = param.thisObject
-            if qb_hold_target(self.plugin, layout) is None:
+            res = param.getResult()
+            in_prog = qb_bool_field(layout, "predictiveBackInProgress")
+            stack_dump = qb_stack_dump(layout)
+            _qb_log(self.plugin, f"onBackStarted: result={res!r}, in_progress={in_prog!r}, stack={stack_dump}")
+
+            if res is False:
+                _qb_log(self.plugin, "ignored: onBackStarted returned False")
                 return
 
+            stack = layout.getFragmentStack()
+            size = int(stack.size()) if stack is not None else 0
+            if size < 3:
+                _qb_log(self.plugin, f"ignored: stack depth ({size}) < 3, no intermediate screens to skip")
+                return
+
+            if not qb_gesture_active(layout):
+                _qb_log(self.plugin, "ignored: predictiveBackInProgress is False")
+                return
+
+            target_info = qb_hold_target(self.plugin, layout)
+            if target_info is None:
+                _qb_log(self.plugin, f"ignored: no eligible target in stack ({stack_dump})")
+                return
+
+            _, _, target_index, target_fragment = target_info
+            target_name = target_fragment.getClass().getSimpleName()
+            threshold = _qb_threshold_sec(self.plugin)
             _QB_BACK_START_TS = time.monotonic()
             _QB_VIBRATED = False
 
-            threshold = _qb_threshold_sec(self.plugin)
+            _qb_log(
+                self.plugin,
+                f"tracking hold gesture -> target={target_name} (idx {target_index}), threshold={threshold:.2f}s",
+            )
             runnable = _QbThresholdRunnable(self.plugin, _QB_BACK_START_TS, layout)
             _QB_THRESHOLD_RUNNABLE = runnable
             post_ui(runnable.run, int(threshold * 1000))
@@ -185,6 +214,10 @@ class _QbOnBackCancelledHook(MethodHook):
 
     def after_hooked_method(self, param):
         global _QB_BACK_START_TS, _QB_VIBRATED
+        _qb_log(
+            self.plugin,
+            f"onBackCancelled (tracking={'active' if _QB_BACK_START_TS else 'none'}, dirty={_QB_DIRTY})",
+        )
         _QB_BACK_START_TS = None
         _QB_VIBRATED = False
         _qb_revert(self.plugin, param.thisObject, "gesture cancelled")
@@ -199,17 +232,21 @@ class _QbOnBackInvokedHook(MethodHook):
         qb_reset_animated_view()
         try:
             start = _QB_BACK_START_TS
+            layout = param.thisObject
+            _qb_log(
+                self.plugin,
+                f"onBackInvoked: tracking={'active' if start else 'none'}, dirty={_QB_DIRTY}",
+            )
             if start is None or _QB_SWAP_TS != start:
                 if _QB_DIRTY:
                     _qb_log(self.plugin, "back invoked for another gesture, reverting")
-                    _qb_revert(self.plugin, param.thisObject, "stale swap")
+                    _qb_revert(self.plugin, layout, "stale swap")
                 return
 
             held = time.monotonic() - start
             threshold = _qb_threshold_sec(self.plugin)
-            layout = param.thisObject
             if held < threshold or not qb_gesture_active(layout):
-                _qb_log(self.plugin, f"back released after {held:.2f}s, no jump")
+                _qb_log(self.plugin, f"back released after {held:.2f}s < threshold {threshold:.2f}s, no jump")
                 _qb_revert(self.plugin, layout, "released early")
                 return
 
@@ -246,6 +283,43 @@ class _QbOnBackInvokedHook(MethodHook):
         _QB_SWAP_TS = None
 
 
+def _qb_diagnose_env(plugin):
+    try:
+        Build = find_class("android.os.Build$VERSION")
+        sdk = int(getattr(Build, "SDK_INT", 0)) if Build else 0
+
+        extera_info = "unknown"
+        ExteraConfig = find_class("com.exteragram.messenger.ExteraConfig")
+        if ExteraConfig is not None:
+            try:
+                field = ExteraConfig.getClass().getDeclaredField("predictiveBackAnimation")
+                field.setAccessible(True)
+                val = bool(field.get(None))
+                extera_info = f"predictiveBackAnimation={val}"
+            except Exception:
+                try:
+                    method = ExteraConfig.getClass().getDeclaredMethod("getPredictiveBackIntensity")
+                    method.setAccessible(True)
+                    val = float(method.invoke(None))
+                    extera_info = f"predictiveBackIntensity={val}"
+                except Exception:
+                    pass
+
+        _qb_log(plugin, f"env: Android SDK {sdk}, extera={extera_info}")
+        if sdk < 34:
+            _qb_log(
+                plugin,
+                f"ATTENTION: Android SDK is {sdk} < 34! Predictive back requires Android 14+ (API 34).",
+            )
+        elif "predictiveBackAnimation=False" in extera_info or "predictiveBackIntensity=0" in extera_info:
+            _qb_log(
+                plugin,
+                "ATTENTION: Predictive back animation is DISABLED in exteraGram settings! Enable it in exteraGram settings and restart the app.",
+            )
+    except Exception as e:
+        _qb_log(plugin, f"diagnose env failed: {e}")
+
+
 def install_quick_back(plugin):
     global _QB_INSTALLED
     if _QB_INSTALLED:
@@ -276,6 +350,7 @@ def install_quick_back(plugin):
         qb_cache_prepare_moving(plugin)
         _QB_INSTALLED = True
         _qb_log(plugin, f"quick back hooks installed ({len(_QB_HOOK_REFS)})")
+        _qb_diagnose_env(plugin)
     except Exception as e:
         _qb_log(plugin, f"install error: {e}")
 

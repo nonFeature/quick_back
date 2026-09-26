@@ -51,12 +51,32 @@ def qb_stack_dump(layout):
         return f"<dump failed: {e}>"
 
 
+def _is_class(obj, *class_names):
+    if obj is None:
+        return False
+    try:
+        name = obj.getClass().getName()
+        simple = obj.getClass().getSimpleName()
+        for c in class_names:
+            if c in (name, simple):
+                return True
+    except Exception:
+        pass
+    for c in class_names:
+        try:
+            cls = find_class(c) if "." in c else None
+            if cls is not None and isinstance(obj, cls):
+                return True
+        except Exception:
+            pass
+    return False
+
+
 def is_archive(candidate):
     if candidate is None:
         return False
     try:
-        DialogsActivity = find_class("org.telegram.ui.DialogsActivity")
-        if DialogsActivity is not None and isinstance(candidate, DialogsActivity):
+        if _is_class(candidate, "DialogsActivity", "org.telegram.ui.DialogsActivity"):
             return bool(candidate.isArchive())
     except Exception:
         pass
@@ -65,12 +85,9 @@ def is_archive(candidate):
 
 def find_first_chat(stack, start, end):
     try:
-        ChatActivity = find_class("org.telegram.ui.ChatActivity")
-        if ChatActivity is None:
-            return -1, None
         for i in range(start, end):
             fragment = stack.get(i)
-            if fragment is not None and isinstance(fragment, ChatActivity):
+            if fragment is not None and _is_class(fragment, "ChatActivity", "org.telegram.ui.ChatActivity"):
                 return i, fragment
     except Exception:
         pass
@@ -79,18 +96,24 @@ def find_first_chat(stack, start, end):
 
 def find_main_fragment(layout):
     try:
-        DialogsActivity = find_class("org.telegram.ui.DialogsActivity")
-        MainTabsActivity = find_class("org.telegram.ui.MainTabsActivity")
         stack = layout.getFragmentStack()
-        for i in range(stack.size() - 2, -1, -1):
+        if stack is None:
+            return -1, None
+        size = int(stack.size())
+        for i in range(size - 2, -1, -1):
             fragment = stack.get(i)
-            if DialogsActivity is not None and isinstance(fragment, DialogsActivity):
+            if fragment is None:
+                continue
+            if _is_class(fragment, "DialogsActivity", "org.telegram.ui.DialogsActivity"):
                 try:
-                    if fragment.isMainDialogList() and not fragment.isArchive():
+                    if hasattr(fragment, "isMainDialogList"):
+                        if fragment.isMainDialogList() and not fragment.isArchive():
+                            return i, fragment
+                    elif not fragment.isArchive():
                         return i, fragment
                 except Exception:
-                    pass
-            if MainTabsActivity is not None and isinstance(fragment, MainTabsActivity):
+                    return i, fragment
+            if _is_class(fragment, "MainTabsActivity", "org.telegram.ui.MainTabsActivity"):
                 try:
                     dialogs = fragment.getDialogsActivity()
                     if dialogs is not None and not dialogs.isArchive():
