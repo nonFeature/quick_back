@@ -4,4 +4,5 @@ __description__ = "Через некоторое насилие над пред�
 __icon__ = "nonPlugins/2"
 __version__ = "0.2"
 __min_version__ = "12.5.1"
+__app_version__ = ">=12.5.1"
 __author__ = "@nonPlugins"
