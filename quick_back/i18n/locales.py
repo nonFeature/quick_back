@@ -4,9 +4,7 @@ STRINGS = {
     "ru": {
         "gestures_header": "Способы срабатывания",
         "gesture_predictive": "Предиктивный жест",
-        "gesture_predictive_sub": "Системный свайп «Назад» от кромки экрана (Android 14+)",
         "gesture_swipe": "Свайп по экрану",
-        "gesture_swipe_sub": "Смахивание текущего экрана вправо пальцем",
         "general_header": "Основные настройки",
         "target_mode": "Куда возвращаться",
         "target_mode_home": "Главный экран (список чатов)",
@@ -28,9 +26,7 @@ STRINGS = {
     "en": {
         "gestures_header": "Trigger methods",
         "gesture_predictive": "Predictive back gesture",
-        "gesture_predictive_sub": "System back swipe from screen edge (Android 14+)",
         "gesture_swipe": "In-app screen swipe",
-        "gesture_swipe_sub": "Swiping current screen to the right with finger",
         "general_header": "General settings",
         "target_mode": "Return destination",
         "target_mode_home": "Home screen (chats list)",

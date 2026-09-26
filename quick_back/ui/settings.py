@@ -53,13 +53,11 @@ def build_settings(plugin):
                 Switch(
                     key=CONF_GESTURE_PREDICTIVE,
                     text=get_string("gesture_predictive"),
-                    subtext=get_string("gesture_predictive_sub"),
                     default=True,
                 ),
                 Switch(
                     key=CONF_GESTURE_SWIPE,
                     text=get_string("gesture_swipe"),
-                    subtext=get_string("gesture_swipe_sub"),
                     default=True,
                 ),
             ]
