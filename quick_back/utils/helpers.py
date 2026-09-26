@@ -314,8 +314,20 @@ def is_extera_predictive_disabled() -> bool:
 extera_predictive = is_extera_predictive_disabled
 
 
+def is_tablet() -> bool:
+    try:
+        AndroidUtilities = find_class("org.telegram.messenger.AndroidUtilities")
+        if AndroidUtilities is not None:
+            return bool(AndroidUtilities.isTablet())
+    except Exception:
+        pass
+    return False
+
+
 def is_predictive_back_supported() -> bool:
     if not is_predictive_back_platform_supported():
+        return False
+    if is_tablet():
         return False
     if is_button_navigation():
         return False
@@ -344,6 +356,8 @@ def get_incompatibility_reason() -> str | None:
         return "android_version"
     if not is_predictive_back_platform_supported():
         return "telegram_version"
+    if is_tablet():
+        return "tablet"
     if is_button_navigation():
         return "buttons"
     if is_exteraless_predictive_disabled() or is_extera_predictive_disabled():

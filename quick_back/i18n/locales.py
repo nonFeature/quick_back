@@ -30,6 +30,7 @@ STRINGS = {
             "(только не говори что у тебя три физические кнопки)"
         ),
         "reason_client": ("в клиенте отключён предиктивный жест «Назад». Включи его в настройках своего клиента, чтобы плагин реагировал и на него."),
+        "reason_tablet": "на планшетах предиктивный жест «Назад» отключён самим Телеграмом (из-за двухпанельного режима).",
         "hide_incompat_hint": "Скрыть это предупреждение",
         "incompat_hint_hidden": "Предупреждение скрыто",
     },
@@ -62,6 +63,7 @@ STRINGS = {
             "(just don't tell me you have three physical buttons)"
         ),
         "reason_client": ("predictive back gesture is disabled in the client. Enable it in your client's settings to make the plugin respond to it."),
+        "reason_tablet": "predictive back gesture is disabled by Telegram on tablets (due to split-screen mode).",
         "hide_incompat_hint": "Hide this warning",
         "incompat_hint_hidden": "Warning hidden",
     },

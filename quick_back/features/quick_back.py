@@ -28,6 +28,7 @@ from utils.helpers import (
     get_client_version,
     get_navigation_mode_name,
     is_predictive_back_supported,
+    is_tablet,
     quick_back_core,
 )
 
@@ -450,10 +451,11 @@ def _qb_diagnose_env(plugin):
         sdk = get_android_sdk()
         ver = get_client_version()
         nav_mode = get_navigation_mode_name()
+        tablet = is_tablet()
         pred_supported = is_predictive_back_supported()
         _qb_log(
             plugin,
-            f"env: SDK {sdk}, TG {ver}, nav={nav_mode}, predictive={pred_supported}",
+            f"env: SDK {sdk}, TG {ver}, nav={nav_mode}, tablet={tablet}, predictive={pred_supported}",
         )
     except Exception as e:
         _qb_log(plugin, f"diagnose env failed: {e}")
