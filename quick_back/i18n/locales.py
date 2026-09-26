@@ -25,9 +25,13 @@ STRINGS = {
         "reason_android": "для предиктивного жеста «Назад» требуется Android 14+ (у тебя Android {}).",
         "reason_telegram": "текущая версия клиента не поддерживает предиктивный жест «Назад».",
         "reason_buttons": (
-            "в системе включена навигация кнопками. Чтобы он реагировал и на предиктивный жест, включи жестовую навигацию в настройках Android."
+            "в системе включена навигация кнопками. "
+            "Чтобы он реагировал и на предиктивный жест, включи жестовую навигацию в настройках Android. "
+            "(только не говори что у тебя три физические кнопки)"
         ),
         "reason_client": ("в клиенте отключён предиктивный жест «Назад». Включи его в настройках своего клиента, чтобы плагин реагировал и на него."),
+        "hide_incompat_hint": "Скрыть это предупреждение",
+        "incompat_hint_hidden": "Предупреждение скрыто",
     },
     "en": {
         "gestures_header": "Gestures",
@@ -52,8 +56,14 @@ STRINGS = {
         "hint_incompat_prefix": "The plugin will only trigger via Telegram in-app swipe",
         "reason_android": "predictive back gesture requires Android 14+ (you have Android {}).",
         "reason_telegram": "current client version does not support predictive back gesture.",
-        "reason_buttons": ("3-button navigation is enabled. To make it respond to predictive back gestures, enable gesture navigation in Android settings."),
+        "reason_buttons": (
+            "3-button navigation is enabled. "
+            "To make it respond to predictive back gestures, enable gesture navigation in Android settings. "
+            "(just don't tell me you have three physical buttons)"
+        ),
         "reason_client": ("predictive back gesture is disabled in the client. Enable it in your client's settings to make the plugin respond to it."),
+        "hide_incompat_hint": "Hide this warning",
+        "incompat_hint_hidden": "Warning hidden",
     },
 }
 

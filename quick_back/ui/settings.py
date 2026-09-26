@@ -1,5 +1,5 @@
 from i18n.locales import get_string
-from ui.settings import Divider, Header, Selector, Switch
+from ui.settings import Divider, Header, Selector, Switch, Text
 
 CONF_GESTURE_PREDICTIVE = "gesture_predictive"
 CONF_GESTURE_SWIPE = "gesture_swipe"
@@ -7,6 +7,7 @@ CONF_TARGET_MODE = "target_mode"
 CONF_HOLD_THRESHOLD = "threshold"
 CONF_VIBRATION = "vibration"
 CONF_ANIMATION = "animation"
+CONF_HIDE_INCOMPAT_HINT = "hide_incompat_hint"
 
 THRESHOLD_CHOICES = [400, 600, 800, 1000]
 
@@ -14,6 +15,7 @@ __all__ = [
     "CONF_ANIMATION",
     "CONF_GESTURE_PREDICTIVE",
     "CONF_GESTURE_SWIPE",
+    "CONF_HIDE_INCOMPAT_HINT",
     "CONF_HOLD_THRESHOLD",
     "CONF_TARGET_MODE",
     "CONF_VIBRATION",
@@ -98,7 +100,7 @@ def build_settings(plugin):
     )
 
     reason = get_incompatibility_reason()
-    if reason:
+    if reason and not plugin.get_setting(CONF_HIDE_INCOMPAT_HINT, False):
         prefix = get_string("hint_incompat_prefix")
         reason_map = {
             "android_version": lambda: get_string("reason_android").format(get_android_release()),
@@ -109,6 +111,25 @@ def build_settings(plugin):
         }
         getter = reason_map.get(reason)
         if getter:
-            items.append(Divider(text=f"{prefix}: {getter()}"))
+
+            def _hide_hint(_=None):
+                plugin.set_setting(CONF_HIDE_INCOMPAT_HINT, True, reload_settings=True)
+                try:
+                    from ui.bulletin import BulletinHelper
+
+                    BulletinHelper.show_info(get_string("incompat_hint_hidden"))
+                except Exception:
+                    pass
+
+            items.extend(
+                [
+                    Divider(text=f"{prefix}: {getter()}"),
+                    Text(
+                        text=get_string("hide_incompat_hint"),
+                        icon="msg_close",
+                        on_click=_hide_hint,
+                    ),
+                ]
+            )
 
     return items
