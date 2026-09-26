@@ -12,6 +12,12 @@ STRINGS = {
         "vib_light": "Лёгкая",
         "vib_medium": "Обычная",
         "vib_strong": "Сильная",
+        "animation": "Анимация",
+        "anim_instant": "Без анимации",
+        "anim_fade": "Затухание",
+        "anim_depth": "Масштаб",
+        "anim_slide": "Сдвиг",
+        "anim_elastic": "Пружина",
     },
     "en": {
         "target_mode": "Return destination",
@@ -24,6 +30,12 @@ STRINGS = {
         "vib_light": "Light",
         "vib_medium": "Medium",
         "vib_strong": "Strong",
+        "animation": "Animation",
+        "anim_instant": "None",
+        "anim_fade": "Fade",
+        "anim_depth": "Scale",
+        "anim_slide": "Slide",
+        "anim_elastic": "Spring",
     },
 }
 

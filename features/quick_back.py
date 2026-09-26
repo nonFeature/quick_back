@@ -1,14 +1,21 @@
 import time
 
 from base_plugin import MethodHook
-from hook_utils import find_class, get_private_field, set_private_field
+from hook_utils import find_class, get_private_field
 
-from ui.settings import (
-    CONF_HOLD_THRESHOLD,
-    CONF_TARGET_MODE,
-    CONF_VIBRATION,
-    THRESHOLD_CHOICES,
+from features.animation import qb_animate_target_view, qb_reset_animated_view
+from features.stack import (
+    qb_apply_order,
+    qb_cache_prepare_moving,
+    qb_gesture_active,
+    qb_hold_target,
+    qb_prepare_moving,
+    qb_stack_dump,
+    qb_target_behind_top,
+    qb_transition_background,
 )
+from features.vibration import play_vibration
+from ui.settings import CONF_HOLD_THRESHOLD, THRESHOLD_CHOICES
 from utils.fragment import post_ui
 from utils.helpers import quick_back_core
 
@@ -22,9 +29,6 @@ _QB_SWAP_TS = None
 _QB_DIRTY = False
 _QB_INTERMEDIATE = []
 _QB_TARGET_FRAGMENT = None
-_QB_PREPARE_MOVING = None
-_QB_MISSING = object()
-_QB_FIELDS = {}
 
 
 def _qb_log(plugin, msg):
@@ -32,71 +36,6 @@ def _qb_log(plugin, msg):
         plugin.log(f"[Quick Back] {msg}")
     except Exception as e:
         print(f"[Quick Back] log failed: {e}")
-
-
-def _qb_waveform(*values):
-    from java import jlong
-
-    return jlong[values]
-
-
-def play_vibration(plugin, mode=None):
-    if mode is None:
-        try:
-            mode = int(plugin.get_setting(CONF_VIBRATION, 2) or 2)
-        except Exception:
-            mode = 2
-
-    if mode == 0:
-        return
-
-    try:
-        from android.os import Build
-
-        VibratorUtils = find_class("com.exteragram.messenger.utils.system.VibratorUtils")
-        if VibratorUtils:
-            from android.os import VibrationEffect
-
-            if mode == 1:
-                if int(Build.VERSION.SDK_INT) >= 29:
-                    VibratorUtils.vibrateEffect(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK)))
-                else:
-                    VibratorUtils.vibrate(20)
-            elif mode == 2:
-                if int(Build.VERSION.SDK_INT) >= 29:
-                    VibratorUtils.vibrateEffect(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK)))
-                else:
-                    VibratorUtils.vibrate(40)
-            elif mode == 3:
-                VibratorUtils.vibrate(80)
-            _qb_log(plugin, f"vibration played (mode {mode})")
-            return
-    except Exception as e:
-        _qb_log(plugin, f"extera vibration error: {e}")
-
-    try:
-        from android.os import Build, VibrationEffect
-        from org.telegram.messenger import ApplicationLoader
-
-        context = ApplicationLoader.applicationContext
-        vibrator = context.getSystemService("vibrator")
-        if vibrator is None:
-            return
-
-        if mode == 1:
-            if int(Build.VERSION.SDK_INT) >= 29:
-                vibrator.vibrate(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK)))
-            else:
-                vibrator.vibrate(20)
-        elif mode == 2:
-            if int(Build.VERSION.SDK_INT) >= 29:
-                vibrator.vibrate(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK)))
-            else:
-                vibrator.vibrate(40)
-        elif mode == 3:
-            vibrator.vibrate(80)
-    except Exception as e:
-        _qb_log(plugin, f"vibration error: {e}")
 
 
 def _qb_threshold_sec(plugin):
@@ -112,261 +51,18 @@ def _qb_threshold_sec(plugin):
         return 0.6
 
 
-def _is_archive(candidate):
-    if candidate is None:
-        return False
-    try:
-        DialogsActivity = find_class("org.telegram.ui.DialogsActivity")
-        if DialogsActivity is not None and isinstance(candidate, DialogsActivity):
-            return bool(candidate.isArchive())
-    except Exception:
-        pass
-    return False
-
-
-def _find_first_chat(stack, start, end):
-    try:
-        ChatActivity = find_class("org.telegram.ui.ChatActivity")
-        if ChatActivity is None:
-            return -1, None
-        for i in range(start, end):
-            fragment = stack.get(i)
-            if fragment is not None and isinstance(fragment, ChatActivity):
-                return i, fragment
-    except Exception:
-        pass
-    return -1, None
-
-
-def _qb_bool_field(target, name):
-    field = _QB_FIELDS.get(name, _QB_MISSING)
-    if field is _QB_MISSING:
-        field = None
-        try:
-            cls = target.getClass()
-            while cls is not None:
-                try:
-                    field = cls.getDeclaredField(name)
-                    field.setAccessible(True)
-                    break
-                except Exception:
-                    cls = cls.getSuperclass()
-        except Exception as e:
-            _qb_log(None, f"{name} lookup error: {e}")
-        _QB_FIELDS[name] = field
-    if field is None:
-        return None
-    try:
-        return bool(field.get(target))
-    except Exception as e:
-        _qb_log(None, f"{name} read error: {e}")
-        return None
-
-
-def _qb_gesture_active(layout):
-    in_progress = _qb_bool_field(layout, "predictiveBackInProgress")
-    if in_progress is None:
-        return True
-    return in_progress
-
-
-def _qb_stack_dump(layout):
-    try:
-        stack = layout.getFragmentStack()
-        parts = []
-        for i in range(int(stack.size())):
-            fragment = stack.get(i)
-            name = "null" if fragment is None else fragment.getClass().getSimpleName()
-            parts.append(f"{i}:{name}")
-        return " ".join(parts)
-    except Exception as e:
-        return f"<dump failed: {e}>"
-
-
-def _find_main_fragment(layout):
-    try:
-        DialogsActivity = find_class("org.telegram.ui.DialogsActivity")
-        MainTabsActivity = find_class("org.telegram.ui.MainTabsActivity")
-        stack = layout.getFragmentStack()
-        for i in range(stack.size() - 2, -1, -1):
-            fragment = stack.get(i)
-            if DialogsActivity is not None and isinstance(fragment, DialogsActivity):
-                try:
-                    if fragment.isMainDialogList() and not fragment.isArchive():
-                        return i, fragment
-                except Exception:
-                    pass
-            if MainTabsActivity is not None and isinstance(fragment, MainTabsActivity):
-                try:
-                    dialogs = fragment.getDialogsActivity()
-                    if dialogs is not None and not dialogs.isArchive():
-                        return i, fragment
-                except Exception:
-                    pass
-    except Exception as e:
-        _qb_log(None, f"find_main_fragment failed: {e}")
-    return -1, None
-
-
-def _qb_hold_target(plugin, layout):
-    """Determines if the current stack and screen are eligible for quick back,
-
-    and identifies the target fragment to jump to.
-    """
-    try:
-        stack = layout.getFragmentStack()
-        size = int(stack.size())
-        if size < 3:
-            return None
-
-        top = stack.get(size - 1)
-        # Exclude only if currently on the Archive screen itself
-        if _is_archive(top):
-            return None
-
-        mode = int(plugin.get_setting(CONF_TARGET_MODE, 0) or 0)
-
-        target_index = -1
-        target_fragment = None
-
-        if mode == 1:
-            # Section root mode:
-            # If the screen right after main list is archive (e.g. Main -> Archive -> Chat -> Profile)
-            if size > 2 and _is_archive(stack.get(1)):
-                chat_index, chat_fragment = _find_first_chat(stack, start=2, end=size - 1)
-                if chat_fragment is not None:
-                    target_index, target_fragment = chat_index, chat_fragment
-                else:
-                    target_index, target_fragment = _find_main_fragment(layout)
-            else:
-                target_index = 1
-                target_fragment = stack.get(1)
-        else:
-            # Home mode:
-            target_index, target_fragment = _find_main_fragment(layout)
-
-        if target_fragment is None or target_index < 0:
-            target_index = 0
-            target_fragment = stack.get(0)
-
-        # If the target is already at or above size - 2, normal back gesture already lands on it
-        if target_index >= size - 2:
-            return None
-
-        return stack, size, target_index, target_fragment
-    except Exception as e:
-        _qb_log(plugin, f"hold target check error: {e}")
-        return None
-
-
-def _qb_stack_snapshot(stack, size):
-    try:
-        return [stack.get(i) for i in range(size)]
-    except Exception as e:
-        _qb_log(None, f"stack snapshot failed: {e}")
-        return None
-
-
-def _qb_apply_order(layout, fragments):
-    try:
-        stack = layout.getFragmentStack()
-        stack.clear()
-        for fragment in fragments:
-            stack.add(fragment)
-        return True
-    except Exception as e:
-        _qb_log(None, f"stack reorder error: {e}")
-        return False
-
-
-def _qb_target_behind_top(layout, stack, size, target_index, target_fragment):
-    global _QB_SNAPSHOT, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
-    snapshot = _qb_stack_snapshot(stack, size)
-    if snapshot is None:
-        _qb_log(None, "swap skipped: stack snapshot failed")
-        return False
-
-    screens_below = snapshot[0:target_index]
-    target = snapshot[target_index]
-    intermediate = snapshot[target_index + 1 : size - 1]
-    top = snapshot[size - 1]
-
-    ordered = screens_below + intermediate + [target, top]
-    if not _qb_apply_order(layout, ordered):
-        return False
-
-    _QB_SNAPSHOT = snapshot
-    _QB_INTERMEDIATE = intermediate
-    _QB_TARGET_FRAGMENT = target
-
-    try:
-        if stack.get(int(stack.size()) - 2) != target_fragment:
-            _qb_log(None, "swap skipped: target is not the fragment behind top")
-            return False
-    except Exception as e:
-        _qb_log(None, f"swap verify error: {e}")
-        return False
-    return True
-
-
-def _qb_cache_prepare_moving(plugin):
-    global _QB_PREPARE_MOVING
-    if _QB_PREPARE_MOVING is not None:
-        return True
-    try:
-        ActionBarLayout = find_class("org.telegram.ui.ActionBar.ActionBarLayout")
-        if not ActionBarLayout:
-            return False
-        method = ActionBarLayout.getClass().getDeclaredMethod("prepareForMoving")
-        method.setAccessible(True)
-        _QB_PREPARE_MOVING = method
-        _qb_log(plugin, "prepareForMoving resolved")
-        return True
-    except Exception as e:
-        _qb_log(plugin, f"prepareForMoving unavailable: {e}")
-        return False
-
-
-def _qb_prepare_moving(layout):
-    try:
-        if _QB_PREPARE_MOVING is None:
-            return False
-        _QB_PREPARE_MOVING.invoke(layout)
-        return True
-    except Exception as e:
-        _qb_log(None, f"prepareForMoving error: {e}")
-        return False
-
-
-def _qb_transition_background(layout):
-    try:
-        Helper = find_class("com.exteragram.messenger.utils.ui.PredictiveBackAnimationHelper")
-        if not Helper:
-            return False
-        background = Helper.getTransitionBackground(layout.getFragmentStack(), layout.getLastFragment())
-        if background is None:
-            return False
-        set_private_field(layout, "predictiveBackBackgroundDrawable", background)
-        try:
-            set_private_field(layout, "springRouteBackgroundDrawable", background)
-        except Exception:
-            pass
-        return True
-    except Exception as e:
-        _qb_log(None, f"transition background error: {e}")
-        return False
-
-
 def _qb_swap_background(plugin, layout, ts):
-    global _QB_SWAP_TS, _QB_DIRTY
+    global _QB_SWAP_TS, _QB_DIRTY, _QB_SNAPSHOT, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
     try:
-        if not _qb_gesture_active(layout):
+        if not qb_gesture_active(layout):
             _qb_log(plugin, "swap skipped: no predictive gesture in flight")
             return False
-        target_info = _qb_hold_target(plugin, layout)
+
+        target_info = qb_hold_target(plugin, layout)
         if target_info is None:
             _qb_log(plugin, "swap skipped: target not eligible")
             return False
+
         stack, size, target_index, target_fragment = target_info
         core = quick_back_core(plugin)
         if core is None:
@@ -375,22 +71,37 @@ def _qb_swap_background(plugin, layout, ts):
         if not core.clearBackContainer(layout):
             _qb_log(plugin, "swap skipped: back container unavailable")
             return False
+
         _QB_DIRTY = True
-        if not _qb_target_behind_top(layout, stack, size, target_index, target_fragment):
+        snapshot, intermediate = qb_target_behind_top(layout, stack, size, target_index, target_fragment)
+        if snapshot is None:
             _qb_revert(plugin, layout, "reorder refused")
             return False
-        if not _qb_prepare_moving(layout):
+
+        _QB_SNAPSHOT = snapshot
+        _QB_INTERMEDIATE = intermediate
+        _QB_TARGET_FRAGMENT = target_fragment
+
+        if not qb_prepare_moving(layout):
             _qb_revert(plugin, layout, "prepareForMoving refused")
             return False
-        _qb_transition_background(layout)
+
+        qb_transition_background(layout)
         try:
-            get_private_field(layout, "containerViewBack").invalidate()
+            container_back = get_private_field(layout, "containerViewBack")
+            if container_back is not None:
+                count = int(container_back.getChildCount())
+                if count > 0:
+                    target_view = container_back.getChildAt(count - 1)
+                    qb_animate_target_view(plugin, target_view)
+                container_back.invalidate()
             get_private_field(layout, "containerView").invalidate()
         except Exception as e:
             _qb_log(plugin, f"container invalidate failed: {e}")
+
         _QB_SWAP_TS = ts
         frag_name = target_fragment.getClass().getSimpleName()
-        _qb_log(plugin, f"threshold reached: back retargeted to {frag_name} (idx {target_index}) | {_qb_stack_dump(layout)}")
+        _qb_log(plugin, f"threshold reached: back retargeted to {frag_name} (idx {target_index}) | {qb_stack_dump(layout)}")
         return True
     except Exception as e:
         _qb_log(plugin, f"swap background error: {e}")
@@ -400,6 +111,7 @@ def _qb_swap_background(plugin, layout, ts):
 
 def _qb_revert(plugin, layout, reason):
     global _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
+    qb_reset_animated_view()
     if not _QB_DIRTY:
         return
     _QB_DIRTY = False
@@ -411,8 +123,8 @@ def _qb_revert(plugin, layout, reason):
         if core is None or not core.restoreViews(layout):
             _qb_log(plugin, f"revert ({reason}): back container not restored")
         if _QB_SNAPSHOT is not None:
-            _qb_apply_order(layout, _QB_SNAPSHOT)
-        _qb_log(plugin, f"reverted ({reason}) | {_qb_stack_dump(layout)}")
+            qb_apply_order(layout, _QB_SNAPSHOT)
+        _qb_log(plugin, f"reverted ({reason}) | {qb_stack_dump(layout)}")
     except Exception as e:
         _qb_log(plugin, f"revert ({reason}) error: {e}")
     finally:
@@ -452,7 +164,7 @@ class _QbOnBackStartedHook(MethodHook):
             if not param.getResult():
                 return
             layout = param.thisObject
-            if _qb_hold_target(self.plugin, layout) is None:
+            if qb_hold_target(self.plugin, layout) is None:
                 return
 
             _QB_BACK_START_TS = time.monotonic()
@@ -484,6 +196,7 @@ class _QbOnBackInvokedHook(MethodHook):
 
     def before_hooked_method(self, param):
         global _QB_BACK_START_TS, _QB_VIBRATED, _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
+        qb_reset_animated_view()
         try:
             start = _QB_BACK_START_TS
             if start is None or _QB_SWAP_TS != start:
@@ -495,7 +208,7 @@ class _QbOnBackInvokedHook(MethodHook):
             held = time.monotonic() - start
             threshold = _qb_threshold_sec(self.plugin)
             layout = param.thisObject
-            if held < threshold or not _qb_gesture_active(layout):
+            if held < threshold or not qb_gesture_active(layout):
                 _qb_log(self.plugin, f"back released after {held:.2f}s, no jump")
                 _qb_revert(self.plugin, layout, "released early")
                 return
@@ -512,7 +225,7 @@ class _QbOnBackInvokedHook(MethodHook):
 
             _qb_log(
                 self.plugin,
-                f"back held for {held:.2f}s >= {threshold:.2f}s, {removed} skipped screen(s) dropped | {_qb_stack_dump(layout)}",
+                f"back held for {held:.2f}s >= {threshold:.2f}s, {removed} skipped screen(s) dropped | {qb_stack_dump(layout)}",
             )
             core = quick_back_core(self.plugin)
             if core is not None:
@@ -560,7 +273,7 @@ def install_quick_back(plugin):
                     _qb_log(plugin, f"hook {name} failed: {e}")
                     continue
 
-        _qb_cache_prepare_moving(plugin)
+        qb_cache_prepare_moving(plugin)
         _QB_INSTALLED = True
         _qb_log(plugin, f"quick back hooks installed ({len(_QB_HOOK_REFS)})")
     except Exception as e:
@@ -569,6 +282,7 @@ def install_quick_back(plugin):
 
 def uninstall_quick_back(plugin):
     global _QB_INSTALLED, _QB_BACK_START_TS, _QB_THRESHOLD_RUNNABLE, _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
+    qb_reset_animated_view()
     for ref in _QB_HOOK_REFS:
         try:
             plugin.unhook_method(ref)
