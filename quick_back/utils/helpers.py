@@ -68,27 +68,29 @@ def is_predictive_back_supported() -> bool:
     # 3. Method check on ActionBarLayout: must have onBackStarted
     try:
         ActionBarLayout = find_class("org.telegram.ui.ActionBar.ActionBarLayout")
-        if ActionBarLayout is None:
-            _CACHED_PREDICTIVE_SUPPORTED = False
-            return False
-
-        cls = ActionBarLayout
-        has_on_back_started = False
-        while cls is not None:
-            for m in cls.getDeclaredMethods():
-                if m.getName() == "onBackStarted":
-                    has_on_back_started = True
+        if ActionBarLayout is not None:
+            java_cls = ActionBarLayout.getClass() if hasattr(ActionBarLayout, "getClass") else ActionBarLayout
+            curr = java_cls
+            found = False
+            while curr is not None:
+                try:
+                    for m in curr.getDeclaredMethods():
+                        if m.getName() == "onBackStarted":
+                            found = True
+                            break
+                except Exception:
+                    pass
+                if found:
                     break
-            if has_on_back_started:
-                break
-            cls = cls.getSuperclass()
-
-        if not has_on_back_started:
-            _CACHED_PREDICTIVE_SUPPORTED = False
-            return False
-    except Exception:
-        _CACHED_PREDICTIVE_SUPPORTED = False
-        return False
+                try:
+                    curr = curr.getSuperclass()
+                except Exception:
+                    break
+            if not found:
+                _CACHED_PREDICTIVE_SUPPORTED = False
+                return False
+    except Exception as e:
+        print(f"[Quick Back] onBackStarted detection error: {e}")
 
     _CACHED_PREDICTIVE_SUPPORTED = True
     return True

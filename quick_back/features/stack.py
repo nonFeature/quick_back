@@ -220,14 +220,20 @@ def qb_cache_prepare_moving(plugin=None):
         ActionBarLayout = find_class("org.telegram.ui.ActionBar.ActionBarLayout")
         if not ActionBarLayout:
             return False
-        cls = ActionBarLayout
+        cls = ActionBarLayout.getClass() if hasattr(ActionBarLayout, "getClass") else ActionBarLayout
         while cls is not None:
-            for m in cls.getDeclaredMethods():
-                if m.getName() == "prepareForMoving":
-                    m.setAccessible(True)
-                    _QB_PREPARE_MOVING = m
-                    return True
-            cls = cls.getSuperclass()
+            try:
+                for m in cls.getDeclaredMethods():
+                    if m.getName() == "prepareForMoving":
+                        m.setAccessible(True)
+                        _QB_PREPARE_MOVING = m
+                        return True
+            except Exception:
+                pass
+            try:
+                cls = cls.getSuperclass()
+            except Exception:
+                break
     except Exception as e:
         if plugin is not None:
             try:
