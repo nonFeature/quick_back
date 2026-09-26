@@ -3,10 +3,37 @@ from hook_utils import find_class
 from ui.settings import CONF_VIBRATION
 
 
-def qb_waveform(*values):
-    from java import jlong
+def _play_effect(vibrator, effect, VibratorUtils=None):
+    if effect is not None:
+        if VibratorUtils is not None:
+            try:
+                VibratorUtils.vibrateEffect(effect)
+                return True
+            except Exception:
+                pass
+        try:
+            vibrator.cancel()
+            vibrator.vibrate(effect)
+            return True
+        except Exception:
+            pass
+    return False
 
-    return jlong[values]
+
+def _play_raw(vibrator, ms, VibratorUtils=None):
+    if VibratorUtils is not None:
+        try:
+            VibratorUtils.vibrate(int(ms))
+            return True
+        except Exception:
+            pass
+    try:
+        vibrator.cancel()
+        vibrator.vibrate(int(ms))
+        return True
+    except Exception:
+        pass
+    return False
 
 
 def play_vibration(plugin, mode=None):
@@ -21,29 +48,6 @@ def play_vibration(plugin, mode=None):
 
     try:
         from android.os import Build
-
-        VibratorUtils = find_class("com.exteragram.messenger.utils.system.VibratorUtils")
-        if VibratorUtils:
-            from android.os import VibrationEffect
-
-            if mode == 1:
-                if int(Build.VERSION.SDK_INT) >= 29:
-                    VibratorUtils.vibrateEffect(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK)))
-                else:
-                    VibratorUtils.vibrate(20)
-            elif mode == 2:
-                if int(Build.VERSION.SDK_INT) >= 29:
-                    VibratorUtils.vibrateEffect(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK)))
-                else:
-                    VibratorUtils.vibrate(40)
-            elif mode == 3:
-                VibratorUtils.vibrate(80)
-            return
-    except Exception:
-        pass
-
-    try:
-        from android.os import Build, VibrationEffect
         from org.telegram.messenger import ApplicationLoader
 
         context = ApplicationLoader.applicationContext
@@ -51,17 +55,83 @@ def play_vibration(plugin, mode=None):
         if vibrator is None:
             return
 
+        try:
+            if not vibrator.hasVibrator():
+                return
+        except Exception:
+            pass
+
+        has_amplitude = False
+        sdk = int(Build.VERSION.SDK_INT)
+        if sdk >= 26:
+            try:
+                has_amplitude = bool(vibrator.hasAmplitudeControl())
+            except Exception:
+                has_amplitude = False
+
+        VibratorUtils = find_class("com.exteragram.messenger.utils.system.VibratorUtils")
+
+        # Mode 1: Single light click (EFFECT_CLICK or ~15ms)
         if mode == 1:
-            if int(Build.VERSION.SDK_INT) >= 29:
-                vibrator.vibrate(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK)))
-            else:
-                vibrator.vibrate(20)
+            if sdk >= 29:
+                try:
+                    from android.os import VibrationEffect
+
+                    effect = VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_CLICK))
+                    if _play_effect(vibrator, effect, VibratorUtils):
+                        return
+                except Exception:
+                    pass
+
+            if sdk >= 26:
+                try:
+                    from android.os import VibrationEffect
+
+                    amp = 60 if has_amplitude else -1
+                    effect = VibrationEffect.createOneShot(15, amp)
+                    if _play_effect(vibrator, effect, VibratorUtils):
+                        return
+                except Exception:
+                    pass
+
+            _play_raw(vibrator, 15, VibratorUtils)
+            return
+
+        # Mode 2: Single medium pulse (~55ms, solid tactile tap)
         elif mode == 2:
-            if int(Build.VERSION.SDK_INT) >= 29:
-                vibrator.vibrate(VibrationEffect.createPredefined(int(VibrationEffect.EFFECT_HEAVY_CLICK)))
-            else:
-                vibrator.vibrate(40)
+            if sdk >= 26:
+                try:
+                    from android.os import VibrationEffect
+
+                    amp = 160 if has_amplitude else -1
+                    effect = VibrationEffect.createOneShot(55, amp)
+                    if _play_effect(vibrator, effect, VibratorUtils):
+                        return
+                except Exception:
+                    pass
+
+            _play_raw(vibrator, 55, VibratorUtils)
+            return
+
+        # Mode 3: Single strong pulse (~160ms, heavy vibration)
         elif mode == 3:
-            vibrator.vibrate(80)
-    except Exception:
-        pass
+            if sdk >= 26:
+                try:
+                    from android.os import VibrationEffect
+
+                    amp = 255 if has_amplitude else -1
+                    effect = VibrationEffect.createOneShot(160, amp)
+                    if _play_effect(vibrator, effect, VibratorUtils):
+                        return
+                except Exception:
+                    pass
+
+            _play_raw(vibrator, 160, VibratorUtils)
+            return
+
+    except Exception as e:
+        if plugin is not None:
+            try:
+                plugin.log(f"[Quick Back] vibration error: {e}")
+            except Exception:
+                pass
