@@ -1,5 +1,4 @@
 from hook_utils import find_class, set_private_field
-
 from ui.settings import CONF_TARGET_MODE
 
 _QB_FIELDS = {}

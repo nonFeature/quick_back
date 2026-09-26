@@ -1,5 +1,4 @@
 from hook_utils import find_class
-
 from ui.settings import CONF_VIBRATION
 
 

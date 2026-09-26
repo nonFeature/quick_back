@@ -1,8 +1,6 @@
 import time
 
 from base_plugin import MethodHook
-from hook_utils import find_class, get_private_field
-
 from features.animation import qb_animate_target_view, qb_reset_animated_view
 from features.stack import (
     qb_apply_order,
@@ -16,6 +14,7 @@ from features.stack import (
     qb_transition_background,
 )
 from features.vibration import play_vibration
+from hook_utils import find_class, get_private_field
 from ui.settings import CONF_HOLD_THRESHOLD, THRESHOLD_CHOICES
 from utils.fragment import post_ui
 from utils.helpers import quick_back_core

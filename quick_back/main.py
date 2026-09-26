@@ -1,5 +1,4 @@
 from base_plugin import BasePlugin
-
 from features.quick_back import install_quick_back, uninstall_quick_back
 from ui.settings import build_settings
 
