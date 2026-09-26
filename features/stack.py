@@ -139,7 +139,12 @@ def qb_hold_target(plugin, layout):
             return None
 
         return stack, size, target_index, target_fragment
-    except Exception:
+    except Exception as e:
+        if plugin is not None:
+            try:
+                plugin.log(f"[Quick Back] hold target resolve error: {e}")
+            except Exception:
+                pass
         return None
 
 

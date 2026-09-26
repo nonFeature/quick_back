@@ -1,8 +1,21 @@
 from i18n.locales import get_string
 from ui.settings import Selector
 
+CONF_TARGET_MODE = "target_mode"
+CONF_HOLD_THRESHOLD = "threshold"
+CONF_VIBRATION = "vibration"
+CONF_ANIMATION = "animation"
 
 THRESHOLD_CHOICES = [400, 600, 800, 1000]
+
+__all__ = [
+    "CONF_ANIMATION",
+    "CONF_HOLD_THRESHOLD",
+    "CONF_TARGET_MODE",
+    "CONF_VIBRATION",
+    "THRESHOLD_CHOICES",
+    "build_settings",
+]
 
 
 def build_settings(plugin):
@@ -29,26 +42,26 @@ def build_settings(plugin):
 
     return [
         Selector(
-            key="target_mode",
+            key=CONF_TARGET_MODE,
             text=get_string("target_mode"),
             default=0,
             items=target_modes,
         ),
         Selector(
-            key="threshold",
+            key=CONF_HOLD_THRESHOLD,
             text=get_string("hold_threshold"),
             default=1,
             items=threshold_items,
         ),
         Selector(
-            key="vibration",
+            key=CONF_VIBRATION,
             text=get_string("vibration"),
             default=2,
             items=vibration_items,
             on_change=lambda value: play_vibration(plugin, value),
         ),
         Selector(
-            key="animation",
+            key=CONF_ANIMATION,
             text=get_string("animation"),
             default=0,
             items=animation_items,
