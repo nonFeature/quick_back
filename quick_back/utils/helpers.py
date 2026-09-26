@@ -259,8 +259,63 @@ def is_predictive_back_platform_supported() -> bool:
     return True
 
 
+def is_extera_predictive_disabled() -> bool:
+    try:
+        ExteraConfig = find_class("com.exteragram.messenger.ExteraConfig")
+        if ExteraConfig is None:
+            return False
+
+        methods = find_methods_by_name(ExteraConfig, "getPredictiveBackIntensity")
+        if methods:
+            m = methods[0]
+            m.setAccessible(True)
+            val = float(m.invoke(None))
+            if val <= 0.001:
+                return True
+
+        field = find_field(ExteraConfig, "predictiveBackAnimation")
+        if field is not None:
+            val = bool(field.get(None))
+            if not val:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def is_predictive_back_supported() -> bool:
-    return is_predictive_back_platform_supported() and not is_button_navigation()
+    if not is_predictive_back_platform_supported():
+        return False
+    if is_button_navigation():
+        return False
+    if is_extera_predictive_disabled():
+        return False
+    return True
+
+
+def get_android_release() -> str:
+    try:
+        Build = find_class("android.os.Build$VERSION")
+        if Build:
+            val = getattr(Build, "RELEASE", None)
+            if val:
+                return str(val)
+    except Exception:
+        pass
+    sdk = get_android_sdk()
+    return f"API {sdk}" if sdk else "unknown"
+
+
+def get_incompatibility_reason() -> str | None:
+    if get_android_sdk() < 34:
+        return "android_version"
+    if not is_predictive_back_platform_supported():
+        return "telegram_version"
+    if is_button_navigation():
+        return "buttons"
+    if is_extera_predictive_disabled():
+        return "extera_disabled"
+    return None
 
 
 class ContainerCore:
