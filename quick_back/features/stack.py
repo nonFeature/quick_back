@@ -1,5 +1,6 @@
 from hook_utils import find_class, get_private_field, set_private_field
 from ui.settings import CONF_TARGET_MODE
+from utils.helpers import find_field, find_methods_by_name
 
 _QB_FIELDS = {}
 _QB_MISSING = object()
@@ -9,18 +10,7 @@ _QB_PREPARE_MOVING = None
 def qb_bool_field(target, name):
     field = _QB_FIELDS.get(name, _QB_MISSING)
     if field is _QB_MISSING:
-        field = None
-        try:
-            cls = target.getClass()
-            while cls is not None:
-                try:
-                    field = cls.getDeclaredField(name)
-                    field.setAccessible(True)
-                    break
-                except Exception:
-                    cls = cls.getSuperclass()
-        except Exception:
-            pass
+        field = find_field(target, name)
         _QB_FIELDS[name] = field
     if field is None:
         return None
@@ -178,20 +168,12 @@ def qb_cache_prepare_moving(plugin=None):
         ActionBarLayout = find_class("org.telegram.ui.ActionBar.ActionBarLayout")
         if not ActionBarLayout:
             return False
-        cls = ActionBarLayout.getClass() if hasattr(ActionBarLayout, "getClass") else ActionBarLayout
-        while cls is not None:
-            try:
-                for m in cls.getDeclaredMethods():
-                    if m.getName() == "prepareForMoving":
-                        m.setAccessible(True)
-                        _QB_PREPARE_MOVING = m
-                        return True
-            except Exception:
-                pass
-            try:
-                cls = cls.getSuperclass()
-            except Exception:
-                break
+        methods = find_methods_by_name(ActionBarLayout, "prepareForMoving")
+        if methods:
+            m = methods[0]
+            m.setAccessible(True)
+            _QB_PREPARE_MOVING = m
+            return True
     except Exception as e:
         if plugin is not None:
             try:
@@ -273,18 +255,16 @@ def qb_prepare_moving(layout):
             print(f"[Quick Back] direct layout.prepareForMoving() error: {e}")
 
     try:
-        cls = layout.getClass()
-        while cls is not None:
-            for m in cls.getDeclaredMethods():
-                if m.getName() == "prepareForMoving":
-                    m.setAccessible(True)
-                    param_count = len(m.getParameterTypes())
-                    if param_count == 0:
-                        m.invoke(layout)
-                    elif param_count == 1:
-                        m.invoke(layout, True)
-                    return True
-            cls = cls.getSuperclass()
+        methods = find_methods_by_name(layout, "prepareForMoving")
+        if methods:
+            m = methods[0]
+            m.setAccessible(True)
+            param_count = len(m.getParameterTypes())
+            if param_count == 0:
+                m.invoke(layout)
+            elif param_count == 1:
+                m.invoke(layout, True)
+            return True
     except Exception as e:
         print(f"[Quick Back] dynamic prepareForMoving search error: {e}")
 

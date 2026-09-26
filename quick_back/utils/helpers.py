@@ -46,54 +46,221 @@ def parse_version(version_str: str) -> tuple:
         return (0, 0, 0)
 
 
-def is_predictive_back_supported() -> bool:
-    global _CACHED_PREDICTIVE_SUPPORTED
-    if _CACHED_PREDICTIVE_SUPPORTED is not None:
-        return _CACHED_PREDICTIVE_SUPPORTED
+def get_class_object(cls_or_obj):
+    if cls_or_obj is None:
+        return None
+    try:
+        if hasattr(cls_or_obj, "getClass"):
+            c = cls_or_obj.getClass()
+            if getattr(c, "getName", lambda: "")() != "java.lang.Class":
+                return c
+    except Exception:
+        pass
+    return cls_or_obj
 
-    # 1. Android version check: Predictive back requires Android 14+ (API 34)
+
+def find_methods_by_name(cls_or_obj, method_name: str) -> list:
+    results = []
+    curr = get_class_object(cls_or_obj)
+    visited = set()
+    while curr is not None:
+        try:
+            curr_name = getattr(curr, "getName", lambda: None)()
+            if curr_name in visited:
+                break
+            if curr_name:
+                visited.add(curr_name)
+        except Exception:
+            pass
+
+        try:
+            for m in curr.getDeclaredMethods():
+                if m.getName() == method_name:
+                    results.append(m)
+        except Exception:
+            pass
+
+        try:
+            curr = curr.getSuperclass()
+        except Exception:
+            break
+
+    return results
+
+
+def find_field(cls_or_obj, field_name: str):
+    curr = get_class_object(cls_or_obj)
+    while curr is not None:
+        try:
+            f = curr.getDeclaredField(field_name)
+            f.setAccessible(True)
+            return f
+        except Exception:
+            pass
+        try:
+            curr = curr.getSuperclass()
+        except Exception:
+            break
+    return None
+
+
+def get_navigation_mode() -> int:
+    try:
+        ApplicationLoader = find_class("org.telegram.messenger.ApplicationLoader")
+        context = getattr(ApplicationLoader, "applicationContext", None) if ApplicationLoader else None
+        if context is None:
+            return 2
+
+        cr = context.getContentResolver()
+        Settings_Secure = find_class("android.provider.Settings$Secure")
+        Settings_Global = find_class("android.provider.Settings$Global")
+
+        if Settings_Global is not None:
+            try:
+                miui_fsg = Settings_Global.getInt(cr, "force_fsg_nav_bar", -1)
+                if miui_fsg == 1:
+                    return 2
+                elif miui_fsg == 0:
+                    return 0
+            except Exception:
+                try:
+                    miui_fsg = Settings_Global.getInt(cr, "force_fsg_nav_bar")
+                    if miui_fsg == 1:
+                        return 2
+                    elif miui_fsg == 0:
+                        return 0
+                except Exception:
+                    pass
+
+        if Settings_Secure is not None:
+            try:
+                emui_nav = Settings_Secure.getInt(cr, "secure_gesture_navigation", -1)
+                if emui_nav == 1:
+                    return 2
+                elif emui_nav == 0:
+                    return 0
+            except Exception:
+                try:
+                    emui_nav = Settings_Secure.getInt(cr, "secure_gesture_navigation")
+                    if emui_nav == 1:
+                        return 2
+                    elif emui_nav == 0:
+                        return 0
+                except Exception:
+                    pass
+
+        if Settings_Secure is not None:
+            try:
+                vivo_nav = Settings_Secure.getInt(cr, "navigation_gesture_on", -1)
+                if vivo_nav == 1:
+                    return 2
+                elif vivo_nav == 0:
+                    return 0
+            except Exception:
+                try:
+                    vivo_nav = Settings_Secure.getInt(cr, "navigation_gesture_on")
+                    if vivo_nav == 1:
+                        return 2
+                    elif vivo_nav == 0:
+                        return 0
+                except Exception:
+                    pass
+
+        if Settings_Global is not None:
+            try:
+                sam_nav = Settings_Global.getInt(cr, "navigationbar_mode", -1)
+                if sam_nav == 1:
+                    return 2
+                elif sam_nav == 0:
+                    return 0
+            except Exception:
+                try:
+                    sam_nav = Settings_Global.getInt(cr, "navigationbar_mode")
+                    if sam_nav == 1:
+                        return 2
+                    elif sam_nav == 0:
+                        return 0
+                except Exception:
+                    pass
+
+        if Settings_Secure is not None:
+            try:
+                mode = Settings_Secure.getInt(cr, "navigation_mode", -1)
+                if mode >= 0:
+                    return int(mode)
+            except Exception:
+                try:
+                    mode = Settings_Secure.getInt(cr, "navigation_mode")
+                    return int(mode)
+                except Exception:
+                    pass
+
+        try:
+            Resources = find_class("android.content.res.Resources")
+            if Resources is not None:
+                sys_res = Resources.getSystem()
+                res_id = int(sys_res.getIdentifier("config_navBarInteractionMode", "integer", "android"))
+                if res_id > 0:
+                    return int(sys_res.getInteger(res_id))
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"[Quick Back] navigation mode error: {e}")
+
+    return 2
+
+
+def is_button_navigation() -> bool:
+    return get_navigation_mode() in (0, 1)
+
+
+def get_navigation_mode_name() -> str:
+    mode = get_navigation_mode()
+    if mode == 0:
+        return "3-button"
+    elif mode == 1:
+        return "2-button"
+    elif mode == 2:
+        return "gestures"
+    return f"unknown ({mode})"
+
+
+_CACHED_PLATFORM_SUPPORTED = None
+
+
+def is_predictive_back_platform_supported() -> bool:
+    global _CACHED_PLATFORM_SUPPORTED
+    if _CACHED_PLATFORM_SUPPORTED is not None:
+        return _CACHED_PLATFORM_SUPPORTED
+
     sdk = get_android_sdk()
     if sdk < 34:
-        _CACHED_PREDICTIVE_SUPPORTED = False
+        _CACHED_PLATFORM_SUPPORTED = False
         return False
 
-    # 2. Telegram version check: Predictive back was introduced in 12.2.0+
     ver_str = get_client_version()
     if ver_str != "Unknown":
         parsed = parse_version(ver_str)
         if parsed < (12, 2, 0):
-            _CACHED_PREDICTIVE_SUPPORTED = False
+            _CACHED_PLATFORM_SUPPORTED = False
             return False
 
-    # 3. Method check on ActionBarLayout: must have onBackStarted
     try:
         ActionBarLayout = find_class("org.telegram.ui.ActionBar.ActionBarLayout")
         if ActionBarLayout is not None:
-            java_cls = ActionBarLayout.getClass() if hasattr(ActionBarLayout, "getClass") else ActionBarLayout
-            curr = java_cls
-            found = False
-            while curr is not None:
-                try:
-                    for m in curr.getDeclaredMethods():
-                        if m.getName() == "onBackStarted":
-                            found = True
-                            break
-                except Exception:
-                    pass
-                if found:
-                    break
-                try:
-                    curr = curr.getSuperclass()
-                except Exception:
-                    break
-            if not found:
-                _CACHED_PREDICTIVE_SUPPORTED = False
+            methods = find_methods_by_name(ActionBarLayout, "onBackStarted")
+            if not methods:
+                _CACHED_PLATFORM_SUPPORTED = False
                 return False
     except Exception as e:
         print(f"[Quick Back] onBackStarted detection error: {e}")
 
-    _CACHED_PREDICTIVE_SUPPORTED = True
+    _CACHED_PLATFORM_SUPPORTED = True
     return True
+
+
+def is_predictive_back_supported() -> bool:
+    return is_predictive_back_platform_supported() and not is_button_navigation()
 
 
 class ContainerCore:

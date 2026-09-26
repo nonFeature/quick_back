@@ -23,8 +23,10 @@ from ui.settings import (
 )
 from utils.fragment import post_ui
 from utils.helpers import (
+    find_methods_by_name,
     get_android_sdk,
     get_client_version,
+    get_navigation_mode_name,
     is_predictive_back_supported,
     quick_back_core,
 )
@@ -447,45 +449,12 @@ def _qb_diagnose_env(plugin):
     try:
         sdk = get_android_sdk()
         ver = get_client_version()
+        nav_mode = get_navigation_mode_name()
         pred_supported = is_predictive_back_supported()
-
-        extera_info = "unknown"
-        ExteraConfig = find_class("com.exteragram.messenger.ExteraConfig")
-        if ExteraConfig is not None:
-            try:
-                field = ExteraConfig.getClass().getDeclaredField("predictiveBackAnimation")
-                field.setAccessible(True)
-                val = bool(field.get(None))
-                extera_info = f"predictiveBackAnimation={val}"
-            except Exception:
-                try:
-                    method = ExteraConfig.getClass().getDeclaredMethod("getPredictiveBackIntensity")
-                    method.setAccessible(True)
-                    val = float(method.invoke(None))
-                    extera_info = f"predictiveBackIntensity={val}"
-                except Exception:
-                    pass
-
         _qb_log(
             plugin,
-            f"env: Android SDK {sdk}, Telegram {ver}, predictive_supported={pred_supported}, extera={extera_info}",
+            f"env: SDK {sdk}, TG {ver}, nav={nav_mode}, predictive={pred_supported}",
         )
-        if not pred_supported:
-            if sdk < 34:
-                _qb_log(
-                    plugin,
-                    f"info: Android SDK is {sdk} < 34 (requires Android 14+). Predictive back is disabled, using in-app swipe back.",
-                )
-            else:
-                _qb_log(
-                    plugin,
-                    f"info: Telegram version {ver} does not support predictive back. Using in-app swipe back.",
-                )
-        elif "predictiveBackAnimation=False" in extera_info or "predictiveBackIntensity=0" in extera_info:
-            _qb_log(
-                plugin,
-                "ATTENTION: Predictive back animation is DISABLED in exteraGram settings! Enable it in exteraGram settings and restart the app.",
-            )
     except Exception as e:
         _qb_log(plugin, f"diagnose env failed: {e}")
 
@@ -512,14 +481,13 @@ def install_quick_back(plugin):
                     ("onBackInvoked", _QbOnBackInvokedHook),
                 ]
             )
-        else:
-            _qb_log(plugin, "predictive back unsupported on this environment, hooking swipe gestures only")
 
         for name, hook_cls in hooks:
-            for m in ActionBarLayout.getClass().getDeclaredMethods():
+            methods = find_methods_by_name(ActionBarLayout, name)
+            if not methods:
+                continue
+            for m in methods:
                 try:
-                    if m.getName() != name:
-                        continue
                     m.setAccessible(True)
                     ref = plugin.hook_method(m, hook_cls(plugin))
                     if ref:
