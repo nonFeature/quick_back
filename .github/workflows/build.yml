@@ -1,0 +1,49 @@
+name: Build Quick Back Plugin
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Extract Version
+        id: version
+        run: echo "tag=v$(grep '__version__' quick_back/header.py | cut -d'"' -f2)" >> $GITHUB_ENV
+
+      - name: Build Plugin
+        run: uv run build.py --no-minify
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick_back.plugin
+          path: dist/quick_back.plugin
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Quick Back ${{ env.tag }}
+          tag_name: ${{ env.tag }}
+          files: dist/quick_back.plugin
+          generate_release_notes: true
