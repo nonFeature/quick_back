@@ -15,7 +15,12 @@ from features.stack import (
 )
 from features.vibration import play_vibration
 from hook_utils import find_class, get_private_field
-from ui.settings import CONF_HOLD_THRESHOLD, THRESHOLD_CHOICES
+from ui.settings import (
+    CONF_GESTURE_PREDICTIVE,
+    CONF_GESTURE_SWIPE,
+    CONF_HOLD_THRESHOLD,
+    THRESHOLD_CHOICES,
+)
 from utils.fragment import post_ui
 from utils.helpers import quick_back_core
 
@@ -23,6 +28,8 @@ _QB_HOOK_REFS = []
 _QB_INSTALLED = False
 _QB_BACK_START_TS = None
 _QB_THRESHOLD_RUNNABLE = None
+_QB_SWIPE_START_TS = None
+_QB_SWIPE_RUNNABLE = None
 _QB_VIBRATED = False
 _QB_SNAPSHOT = None
 _QB_SWAP_TS = None
@@ -110,8 +117,9 @@ def _qb_swap_background(plugin, layout, ts):
 
 
 def _qb_revert(plugin, layout, reason):
-    global _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
+    global _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT, _QB_SWIPE_START_TS
     qb_reset_animated_view()
+    _QB_SWIPE_START_TS = None
     if not _QB_DIRTY:
         return
     _QB_DIRTY = False
@@ -152,6 +160,29 @@ class _QbThresholdRunnable:
             _qb_log(self.plugin, f"threshold runnable error: {e}")
 
 
+class _QbSwipeThresholdRunnable:
+    def __init__(self, plugin, ts, layout):
+        self.plugin = plugin
+        self.ts = ts
+        self.layout = layout
+
+    def run(self):
+        global _QB_VIBRATED
+        try:
+            if _QB_SWIPE_START_TS != self.ts:
+                return
+            if _QB_VIBRATED:
+                return
+            if not qb_bool_field(self.layout, "startedTracking"):
+                return
+            _QB_VIBRATED = True
+            play_vibration(self.plugin)
+            _qb_swap_background(self.plugin, self.layout, self.ts)
+            _qb_log(self.plugin, "in-app swipe threshold reached: background swapped & vibrated")
+        except Exception as e:
+            _qb_log(self.plugin, f"swipe threshold runnable error: {e}")
+
+
 class _QbOnBackStartedHook(MethodHook):
     def __init__(self, plugin):
         self.plugin = plugin
@@ -164,6 +195,9 @@ class _QbOnBackStartedHook(MethodHook):
         global _QB_BACK_START_TS, _QB_VIBRATED, _QB_THRESHOLD_RUNNABLE
         try:
             _QB_BACK_START_TS = None
+            if not bool(self.plugin.get_setting(CONF_GESTURE_PREDICTIVE, True)):
+                _qb_log(self.plugin, "onBackStarted ignored: predictive gesture disabled in settings")
+                return
             layout = param.thisObject
             res = param.getResult()
             in_prog = qb_bool_field(layout, "predictiveBackInProgress")
@@ -282,6 +316,128 @@ class _QbOnBackInvokedHook(MethodHook):
         _QB_SWAP_TS = None
 
 
+class _QbOnTouchEventHook(MethodHook):
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        global _QB_SWIPE_START_TS
+        try:
+            if not param.args:
+                return
+            ev = param.args[0]
+            if ev is None:
+                return
+            action = int(ev.getActionMasked())
+            layout = param.thisObject
+
+            if action == 0:  # ACTION_DOWN
+                if _QB_DIRTY:
+                    _qb_revert(self.plugin, layout, "new touch down while dirty")
+                _QB_SWIPE_START_TS = None
+
+            elif action in (1, 3):  # ACTION_UP, ACTION_CANCEL
+                if _QB_SWIPE_START_TS is not None:
+                    held = time.monotonic() - _QB_SWIPE_START_TS
+                    threshold = _qb_threshold_sec(self.plugin)
+                    if held < threshold:
+                        _QB_SWIPE_START_TS = None
+                        if _QB_DIRTY:
+                            _qb_revert(self.plugin, layout, "swipe released early")
+        except Exception as e:
+            _qb_log(self.plugin, f"onTouchEvent before hook error: {e}")
+
+    def after_hooked_method(self, param):
+        global _QB_SWIPE_START_TS, _QB_VIBRATED, _QB_SWIPE_RUNNABLE
+        try:
+            if not param.args:
+                return
+            ev = param.args[0]
+            if ev is None:
+                return
+            if int(ev.getActionMasked()) != 2:  # ACTION_MOVE
+                return
+            if _QB_SWIPE_START_TS is not None:
+                return
+            if _QB_BACK_START_TS is not None:
+                return
+
+            layout = param.thisObject
+            if qb_bool_field(layout, "predictiveBackInProgress"):
+                return
+            if not bool(self.plugin.get_setting(CONF_GESTURE_SWIPE, True)):
+                return
+            if not qb_bool_field(layout, "startedTracking"):
+                return
+
+            stack = layout.getFragmentStack()
+            size = int(stack.size()) if stack is not None else 0
+            if size < 3:
+                return
+
+            target_info = qb_hold_target(self.plugin, layout)
+            if target_info is None:
+                return
+
+            _, _, target_index, target_fragment = target_info
+            target_name = target_fragment.getClass().getSimpleName()
+            threshold = _qb_threshold_sec(self.plugin)
+            _QB_SWIPE_START_TS = time.monotonic()
+            _QB_VIBRATED = False
+
+            _qb_log(
+                self.plugin,
+                f"tracking swipe hold -> target={target_name} (idx {target_index}), threshold={threshold:.2f}s",
+            )
+            runnable = _QbSwipeThresholdRunnable(self.plugin, _QB_SWIPE_START_TS, layout)
+            _QB_SWIPE_RUNNABLE = runnable
+            post_ui(runnable.run, int(threshold * 1000))
+        except Exception as e:
+            _qb_log(self.plugin, f"onTouchEvent after hook error: {e}")
+
+
+class _QbOnSlideAnimationEndHook(MethodHook):
+    def __init__(self, plugin):
+        self.plugin = plugin
+
+    def before_hooked_method(self, param):
+        global _QB_SWIPE_START_TS, _QB_VIBRATED, _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
+        qb_reset_animated_view()
+        _QB_SWIPE_START_TS = None
+        _QB_VIBRATED = False
+        try:
+            layout = param.thisObject
+            back_animation = bool(param.args[0]) if param.args else False
+            _qb_log(self.plugin, f"onSlideAnimationEnd: backAnimation={back_animation}, dirty={_QB_DIRTY}")
+
+            if back_animation:
+                if _QB_DIRTY:
+                    _qb_revert(self.plugin, layout, "swipe cancelled (bounced back)")
+            else:
+                if _QB_DIRTY:
+                    removed = 0
+                    for fragment in list(_QB_INTERMEDIATE):
+                        try:
+                            layout.removeFragmentFromStack(fragment, False)
+                            removed += 1
+                        except Exception as e:
+                            _qb_log(self.plugin, f"remove intermediate screen error: {e}")
+                    _qb_log(
+                        self.plugin,
+                        f"swipe committed: {removed} intermediate screen(s) dropped | {qb_stack_dump(layout)}",
+                    )
+                    core = quick_back_core(self.plugin)
+                    if core is not None:
+                        core.dropSaved()
+                    _QB_SNAPSHOT = None
+                    _QB_SWAP_TS = None
+                    _QB_DIRTY = False
+                    _QB_INTERMEDIATE = []
+                    _QB_TARGET_FRAGMENT = None
+        except Exception as e:
+            _qb_log(self.plugin, f"onSlideAnimationEnd hook error: {e}")
+
+
 def _qb_diagnose_env(plugin):
     try:
         Build = find_class("android.os.Build$VERSION")
@@ -308,7 +464,7 @@ def _qb_diagnose_env(plugin):
         if sdk < 34:
             _qb_log(
                 plugin,
-                f"ATTENTION: Android SDK is {sdk} < 34! Predictive back requires Android 14+ (API 34).",
+                f"info: Android SDK is {sdk} < 34 (predictive back unavailable), in-app swipe back is supported.",
             )
         elif "predictiveBackAnimation=False" in extera_info or "predictiveBackIntensity=0" in extera_info:
             _qb_log(
@@ -333,6 +489,8 @@ def install_quick_back(plugin):
             ("onBackStarted", _QbOnBackStartedHook),
             ("onBackCancelled", _QbOnBackCancelledHook),
             ("onBackInvoked", _QbOnBackInvokedHook),
+            ("onTouchEvent", _QbOnTouchEventHook),
+            ("onSlideAnimationEnd", _QbOnSlideAnimationEndHook),
         ):
             for m in ActionBarLayout.getClass().getDeclaredMethods():
                 try:
@@ -355,7 +513,17 @@ def install_quick_back(plugin):
 
 
 def uninstall_quick_back(plugin):
-    global _QB_INSTALLED, _QB_BACK_START_TS, _QB_THRESHOLD_RUNNABLE, _QB_SNAPSHOT, _QB_SWAP_TS, _QB_DIRTY, _QB_INTERMEDIATE, _QB_TARGET_FRAGMENT
+    global \
+        _QB_INSTALLED, \
+        _QB_BACK_START_TS, \
+        _QB_THRESHOLD_RUNNABLE, \
+        _QB_SWIPE_START_TS, \
+        _QB_SWIPE_RUNNABLE, \
+        _QB_SNAPSHOT, \
+        _QB_SWAP_TS, \
+        _QB_DIRTY, \
+        _QB_INTERMEDIATE, \
+        _QB_TARGET_FRAGMENT
     qb_reset_animated_view()
     for ref in _QB_HOOK_REFS:
         try:
@@ -366,6 +534,8 @@ def uninstall_quick_back(plugin):
     _QB_INSTALLED = False
     _QB_BACK_START_TS = None
     _QB_THRESHOLD_RUNNABLE = None
+    _QB_SWIPE_START_TS = None
+    _QB_SWIPE_RUNNABLE = None
     _QB_SNAPSHOT = None
     _QB_SWAP_TS = None
     _QB_DIRTY = False

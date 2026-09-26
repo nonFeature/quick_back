@@ -31,10 +31,15 @@ def qb_bool_field(target, name):
 
 
 def qb_gesture_active(layout):
-    in_progress = qb_bool_field(layout, "predictiveBackInProgress")
-    if in_progress is None:
+    in_pred = qb_bool_field(layout, "predictiveBackInProgress")
+    if in_pred:
         return True
-    return in_progress
+    in_track = qb_bool_field(layout, "startedTracking")
+    if in_track:
+        return True
+    if in_pred is None and in_track is None:
+        return True
+    return False
 
 
 def qb_stack_dump(layout):

@@ -1,6 +1,8 @@
 from i18n.locales import get_string
-from ui.settings import Selector
+from ui.settings import Header, Selector, Switch
 
+CONF_GESTURE_PREDICTIVE = "gesture_predictive"
+CONF_GESTURE_SWIPE = "gesture_swipe"
 CONF_TARGET_MODE = "target_mode"
 CONF_HOLD_THRESHOLD = "threshold"
 CONF_VIBRATION = "vibration"
@@ -10,6 +12,8 @@ THRESHOLD_CHOICES = [400, 600, 800, 1000]
 
 __all__ = [
     "CONF_ANIMATION",
+    "CONF_GESTURE_PREDICTIVE",
+    "CONF_GESTURE_SWIPE",
     "CONF_HOLD_THRESHOLD",
     "CONF_TARGET_MODE",
     "CONF_VIBRATION",
@@ -41,6 +45,20 @@ def build_settings(plugin):
     ]
 
     return [
+        Header(text=get_string("gestures_header")),
+        Switch(
+            key=CONF_GESTURE_PREDICTIVE,
+            text=get_string("gesture_predictive"),
+            subtext=get_string("gesture_predictive_sub"),
+            default=True,
+        ),
+        Switch(
+            key=CONF_GESTURE_SWIPE,
+            text=get_string("gesture_swipe"),
+            subtext=get_string("gesture_swipe_sub"),
+            default=True,
+        ),
+        Header(text=get_string("general_header")),
         Selector(
             key=CONF_TARGET_MODE,
             text=get_string("target_mode"),
