@@ -42,7 +42,6 @@ def build_settings(plugin):
         get_string("anim_fade"),
         get_string("anim_depth"),
         get_string("anim_slide"),
-        get_string("anim_elastic"),
     ]
 
     items = []

@@ -42,7 +42,6 @@ def qb_animate_target_view(plugin, view):
     _QB_ANIMATED_VIEW = view
 
     DecelerateInterpolator = find_class("android.view.animation.DecelerateInterpolator")
-    OvershootInterpolator = find_class("android.view.animation.OvershootInterpolator")
 
     decelerate = None
     if DecelerateInterpolator is not None:
@@ -82,31 +81,6 @@ def qb_animate_target_view(plugin, view):
             view.setTranslationY(dp_offset)
             anim = view.animate().alpha(1.0).translationY(0.0).setDuration(200)
             if decelerate is not None:
-                anim.setInterpolator(decelerate)
-            anim.start()
-
-        elif mode == 4:
-            # 4. Elastic Pop (punchy spring overshoot and bounce)
-            view.setAlpha(0.0)
-            view.setScaleX(0.80)
-            view.setScaleY(0.80)
-            anim = view.animate().alpha(1.0).scaleX(1.0).scaleY(1.0).setDuration(330)
-
-            overshoot = None
-            if OvershootInterpolator is not None:
-                try:
-                    from java import jfloat
-
-                    overshoot = OvershootInterpolator(jfloat(3.5))
-                except Exception:
-                    try:
-                        overshoot = OvershootInterpolator()
-                    except Exception:
-                        overshoot = None
-
-            if overshoot is not None:
-                anim.setInterpolator(overshoot)
-            elif decelerate is not None:
                 anim.setInterpolator(decelerate)
             anim.start()
 

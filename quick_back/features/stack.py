@@ -72,54 +72,21 @@ def _is_class(obj, *class_names):
     return False
 
 
-def is_archive(candidate):
-    if candidate is None:
-        return False
-    try:
-        if _is_class(candidate, "DialogsActivity", "org.telegram.ui.DialogsActivity"):
-            return bool(candidate.isArchive())
-    except Exception:
-        pass
-    return False
-
-
-def find_first_chat(stack, start, end):
-    try:
-        for i in range(start, end):
-            fragment = stack.get(i)
-            if fragment is not None and _is_class(fragment, "ChatActivity", "org.telegram.ui.ChatActivity"):
-                return i, fragment
-    except Exception:
-        pass
-    return -1, None
-
-
 def find_main_fragment(layout):
     try:
         stack = layout.getFragmentStack()
-        if stack is None:
+        if stack is None or stack.isEmpty():
             return -1, None
         size = int(stack.size())
-        for i in range(size - 2, -1, -1):
+        for i in range(size):
             fragment = stack.get(i)
             if fragment is None:
                 continue
-            if _is_class(fragment, "DialogsActivity", "org.telegram.ui.DialogsActivity"):
-                try:
-                    if hasattr(fragment, "isMainDialogList"):
-                        if fragment.isMainDialogList() and not fragment.isArchive():
-                            return i, fragment
-                    elif not fragment.isArchive():
-                        return i, fragment
-                except Exception:
-                    return i, fragment
             if _is_class(fragment, "MainTabsActivity", "org.telegram.ui.MainTabsActivity"):
-                try:
-                    dialogs = fragment.getDialogsActivity()
-                    if dialogs is not None and not dialogs.isArchive():
-                        return i, fragment
-                except Exception:
-                    pass
+                return i, fragment
+            if _is_class(fragment, "DialogsActivity", "org.telegram.ui.DialogsActivity"):
+                return i, fragment
+        return 0, stack.get(0)
     except Exception:
         pass
     return -1, None
@@ -132,25 +99,16 @@ def qb_hold_target(plugin, layout):
         if size < 3:
             return None
 
-        top = stack.get(size - 1)
-        if is_archive(top):
-            return None
-
         mode = int(plugin.get_setting(CONF_TARGET_MODE, 0) or 0)
 
         target_index = -1
         target_fragment = None
 
         if mode == 1:
-            if size > 2 and is_archive(stack.get(1)):
-                chat_index, chat_fragment = find_first_chat(stack, start=2, end=size - 1)
-                if chat_fragment is not None:
-                    target_index, target_fragment = chat_index, chat_fragment
-                else:
-                    target_index, target_fragment = find_main_fragment(layout)
-            else:
-                target_index = 1
-                target_fragment = stack.get(1)
+            target_index = 1
+            target_fragment = stack.get(1)
+            if target_index >= size - 2:
+                target_index, target_fragment = find_main_fragment(layout)
         else:
             target_index, target_fragment = find_main_fragment(layout)
 

@@ -21,7 +21,6 @@ STRINGS = {
         "anim_fade": "Затухание",
         "anim_depth": "Масштаб",
         "anim_slide": "Сдвиг",
-        "anim_elastic": "Пружина",
     },
     "en": {
         "gestures_header": "Trigger methods",
@@ -43,7 +42,6 @@ STRINGS = {
         "anim_fade": "Fade",
         "anim_depth": "Scale",
         "anim_slide": "Slide",
-        "anim_elastic": "Spring",
     },
 }
 
