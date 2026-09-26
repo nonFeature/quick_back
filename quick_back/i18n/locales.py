@@ -24,7 +24,7 @@ STRINGS = {
     },
     "en": {
         "gestures_header": "Gestures",
-        "gesture_predictive": "Android back gesture",
+        "gesture_predictive": "System back gesture",
         "gesture_swipe": "Telegram back gesture",
         "general_header": "Behavior",
         "target_mode": "Hold destination",
