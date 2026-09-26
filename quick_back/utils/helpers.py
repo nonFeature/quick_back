@@ -259,34 +259,67 @@ def is_predictive_back_platform_supported() -> bool:
     return True
 
 
-def is_extera_predictive_disabled() -> bool:
+def is_exteraless_predictive_disabled() -> bool:
     try:
-        ExteraConfig = find_class("com.exteragram.messenger.ExteraConfig")
-        if ExteraConfig is None:
-            return False
+        UtilsConfig = find_class("app.exteraless.utils.UtilsConfig")
+        if UtilsConfig is not None:
+            methods = find_methods_by_name(UtilsConfig, "predictiveBackIntensity")
+            if methods:
+                m = methods[0]
+                m.setAccessible(True)
+                val = float(m.invoke(None))
+                if val <= 0.001:
+                    return True
 
-        methods = find_methods_by_name(ExteraConfig, "getPredictiveBackIntensity")
-        if methods:
-            m = methods[0]
-            m.setAccessible(True)
-            val = float(m.invoke(None))
-            if val <= 0.001:
-                return True
-
-        field = find_field(ExteraConfig, "predictiveBackAnimation")
-        if field is not None:
-            val = bool(field.get(None))
-            if not val:
-                return True
+            field = find_field(UtilsConfig, "predictiveBackIntensity")
+            if field is not None:
+                item = field.get(None)
+                if item is not None:
+                    int_methods = find_methods_by_name(item, "Int")
+                    if int_methods:
+                        int_m = int_methods[0]
+                        int_m.setAccessible(True)
+                        if int(int_m.invoke(item)) <= 0:
+                            return True
     except Exception:
         pass
     return False
+
+
+exteraless_predictive = is_exteraless_predictive_disabled
+
+
+def is_extera_predictive_disabled() -> bool:
+    try:
+        ExteraConfig = find_class("com.exteragram.messenger.ExteraConfig")
+        if ExteraConfig is not None:
+            methods = find_methods_by_name(ExteraConfig, "getPredictiveBackIntensity")
+            if methods:
+                m = methods[0]
+                m.setAccessible(True)
+                val = float(m.invoke(None))
+                if val <= 0.001:
+                    return True
+
+            field = find_field(ExteraConfig, "predictiveBackAnimation")
+            if field is not None:
+                val = bool(field.get(None))
+                if not val:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+extera_predictive = is_extera_predictive_disabled
 
 
 def is_predictive_back_supported() -> bool:
     if not is_predictive_back_platform_supported():
         return False
     if is_button_navigation():
+        return False
+    if is_exteraless_predictive_disabled():
         return False
     if is_extera_predictive_disabled():
         return False
@@ -313,8 +346,8 @@ def get_incompatibility_reason() -> str | None:
         return "telegram_version"
     if is_button_navigation():
         return "buttons"
-    if is_extera_predictive_disabled():
-        return "extera_disabled"
+    if is_exteraless_predictive_disabled() or is_extera_predictive_disabled():
+        return "client_disabled"
     return None
 
 

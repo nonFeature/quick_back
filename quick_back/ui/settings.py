@@ -104,6 +104,7 @@ def build_settings(plugin):
             "android_version": lambda: get_string("reason_android").format(get_android_release()),
             "telegram_version": lambda: get_string("reason_telegram"),
             "buttons": lambda: get_string("reason_buttons"),
+            "client_disabled": lambda: get_string("reason_client"),
             "extera_disabled": lambda: get_string("reason_client"),
         }
         getter = reason_map.get(reason)
