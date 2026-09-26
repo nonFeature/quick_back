@@ -1,6 +1,6 @@
 __id__ = "quick_back"
 __name__ = "Quick Back"
-__description__ = "Быстрый возврат к списку чатов при удержании предиктивного жеста или свайпа экрана."
+__description__ = "Instant return to home screen or section root via back gestures"
 __icon__ = "nonPlugins/2"
 __version__ = "0.3"
 __min_version__ = "12.1.1"
