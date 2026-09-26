@@ -4,7 +4,7 @@ STRINGS = {
     "ru": {
         "gestures_header": "Жесты",
         "gesture_predictive": "Системный жест «Назад»",
-        "gesture_swipe": "ТГ-шный свайп «Назад»",
+        "gesture_swipe": "ТГ-шный жест «Назад»",
         "general_header": "Поведение",
         "target_mode": "Куда бросать при зажатии",
         "target_mode_home": "В список всех чатов",
@@ -25,7 +25,7 @@ STRINGS = {
     "en": {
         "gestures_header": "Gestures",
         "gesture_predictive": "Android back gesture",
-        "gesture_swipe": "Telegram back swipe",
+        "gesture_swipe": "Telegram back gesture",
         "general_header": "Behavior",
         "target_mode": "Hold destination",
         "target_mode_home": "To all chats list",
